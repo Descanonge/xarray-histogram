@@ -49,8 +49,7 @@ def histogram(
     data_sanity_check(data)
     variables = [a.name for a in data]
 
-    if not isinstance(bins, dict):
-        bins = {variables[0]: bins}
+    bins = to_list(bins)
     bins = manage_bins_input(bins, data)
     bins_names = ['bins_' + v for v in variables]
 
@@ -139,6 +138,8 @@ def comp_hist_numpy(ds, variables, bins, bins_names):
 
 def to_list(a: Union[Any, Sequence]) -> Sequence:
     """Put argument as list of not already a Sequence."""
+    if a is None:
+        return []
     if not isinstance(a, Sequence):
         return [a]
     return a
@@ -173,15 +174,10 @@ def manage_bins_input(bins, data):
     if len(bins) != len(data):
         raise ValueError(f"Not as much bins specifications ({len(bins)}) "
                          f"as data arrays ({len(data)}) were supplied")
-    data_dict = {a.name: a for a in data}
-    bins_dict = {}
-    for name, spec in bins.items():
-        if name not in data_dict:
-            raise KeyError(f"{name} bins name does not correspond to any"
-                           "given DataArray.")
-        a = data_dict[name]
+    bins_out = []
+    for spec, a in zip(bins, data):
         if isinstance(spec, bh.axis.Axis):
-            bins_dict[name] = spec
+            bins_out.append(spec)
             continue
         if isinstance(spec, int):
             spec = [spec]
@@ -193,9 +189,8 @@ def manage_bins_input(bins, data):
                 BinsMinMaxWarning)
             spec = [spec[0], float(a.min().values),
                     float(a.max().values)]
-        bins_dict[name] = bh.axis.Regular(*spec)
+        bins_out.append(bh.axis.Regular(*spec))
 
-    bins_out = [bins_dict[a.name] for a in data]
     return bins_out
 
 
