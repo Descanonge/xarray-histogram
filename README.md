@@ -9,7 +9,7 @@ It relies on the [Boost Histogram](https://boost-histogram.readthedocs.io) libra
 
 It is essentially a thin wrapper using directly [Boost Histogram](https://boost-histogram.readthedocs.io) on loaded data, or [Dask-histogram](https://dask-histogram.readthedocs.io) on data contained in dask arrays. It thus features optimised performance, as well as lazy computation and easy upscaling thanks to dask.
 
-# Quick examples
+## Quick examples
 
 Bins can be specified in a similar way to the numpy functions:
 ``` python
@@ -39,7 +39,7 @@ hist = xh.histogram(temp, bins=bh.axis.Regular(100, 0., 10.), dims=['lat', 'lon'
 
 Histograms can be normalised, and weights can be applied.
 
-# Requirements
+## Requirements
 
 - Python >= 3.7
 - numpy
@@ -47,15 +47,16 @@ Histograms can be normalised, and weights can be applied.
 - [boost-histogram](https://github.com/scikit-hep/boost-histogram)
 - [dask](https://www.dask.org/) and [dask-histogram](https://github.com/dask-contrib/dask-histogram): Optional, if not available all data will be eagerly loaded.
 
-# Documentation
+## Documentation
 
 Documentation and installation steps will be available on readthedocs.
+For now install from source using `pip install -e .`.
 
-# Tests and performance
+## Tests and performance
 
 On its way as well.
 
-# Other packages
+## Other packages
 
 [xhistogram](https://xhistogram.readthedocs.io/en/latest/) already exists and might suit you. It relies on numpy function and thus does not benefit of some performance upgrades brought by Boost (see performance comparisons). I also hoped to bring similar capacities with a much simpler code.
 
