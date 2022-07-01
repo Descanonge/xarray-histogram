@@ -1,3 +1,9 @@
+"Main functions."
+
+# This file is part of the 'xarray-histogram' project
+# (http://github.com/Descanonge/xarray-histogram) and subject
+# to the MIT License as defined in the file 'LICENSE',
+# at the root of this project. © 2022 Clément Haëck
 
 from __future__ import annotations
 from typing import (
