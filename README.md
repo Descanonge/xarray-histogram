@@ -11,24 +11,22 @@ It is essentially a thin wrapper using directly [Boost Histogram](https://boost-
 
 ## Quick examples
 
-Bins can be specified in a similar way to the numpy functions:
+Bins can be specified in a similarly to numpy functions:
 ``` python
 import xarray_histogram as xh
 hist = xh.histogram(data, bins=(100, 0., 10.))
 ```
-but can take advantage of boost [axis](https://boost-histogram.readthedocs.io/en/latest/user-guide/axes.html):
+but also can using boost [axis](https://boost-histogram.readthedocs.io/en/latest/user-guide/axes.html), benifiting from their features:
 ``` python
 import boost_histogram as bh
 hist = xh.histogram(data, bins=bh.axis.Regular(100, 0., 10.))
 ```
 
-This works seamlessly on loaded data (stored in numpy arrays) or lazily loaded data (stored in dask arrays).
-
-Multi-dimensional histogram can be computed, here 2D:
+Multi-dimensional histogram can be computed, here in 2D for instance:
 ``` python
 hist = xh.histogram(
     temp, sal,
-    bins=[bh.axis.Regular(100, 0., 10.), bh.axis.Regular(100, 31, 38))
+    bins=[bh.axis.Regular(100, -5., 40.), bh.axis.Regular(100, 31, 38))
 )
 ```
 
@@ -38,6 +36,7 @@ hist = xh.histogram(temp, bins=bh.axis.Regular(100, 0., 10.), dims=['lat', 'lon'
 ```
 
 Histograms can be normalised, and weights can be applied.
+All of this works seamlessly with data stored in numpy or dask arrays.
 
 ## Requirements
 
@@ -50,14 +49,14 @@ Histograms can be normalised, and weights can be applied.
 ## Documentation
 
 Documentation and installation steps will be available on readthedocs.
+
 For now install from source using `pip install -e .`.
 
 ## Tests and performance
 
-On its way as well.
+Tests are on the way.
+To compare performances check these notebooks for [numpy](./docs/source/perf_numpy.ipynb) and [dask](./docs/source/perf_dask.ipynb) arrays.
 
 ## Other packages
 
-[xhistogram](https://xhistogram.readthedocs.io/en/latest/) already exists and might suit you. It relies on numpy functions and thus does not benefit of some performance upgrades brought by Boost (see performance comparisons). I also hoped to bring similar features with a much simpler code. Some additional features of boost (overflow bins, rebinning) can easily be added (this is in the works).
-
-It is also quite straightforward to compute an histogram from a flattened array with just boost: [Boost: Xarray example](https://boost-histogram.readthedocs.io/en/latest/notebooks/xarray.html), or just dask-histogram by using `dataarray.data.ravel()`.
+[xhistogram](https://xhistogram.readthedocs.io/en/latest/) already exists. It relies on numpy functions and thus does not benefit of some performance upgrades brought by Boost (see performance comparisons). I also hoped to bring similar features with simpler code, relying on dependencies. Some additional features of boost (overflow bins, rebinning) can easily be added (this is in the works).
