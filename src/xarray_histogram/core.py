@@ -98,18 +98,16 @@ def histogram(
             if not a._in_memory:
                 data[i] = a.load()
 
-    # Merge everything together so it can be send through a single
+    # Merge everything together so it can be sent through a single
     # groupby call.
     ds = xr.merge(data, join='exact')
-
-    do_flat_array = (dims is None or set(dims) == set(data[0].dims))
 
     if all_dask:
         comp_hist_func = comp_hist_dask
     else:
         comp_hist_func = comp_hist_numpy
 
-
+    do_flat_array = (dims is None or set(dims) == set(data[0].dims))
     if do_flat_array:
         hist = comp_hist_func(ds, variables, bins, bins_names)
     else:
@@ -146,7 +144,7 @@ def histogram(
 def separate_ravel(
         ds: xr.DataSet, variables: Sequence[str]
 ) -> Tuple[List[xr.DataArray], xr.DataArray]:
-    """Separate data and weight arrays and as flattened arrays."""
+    """Separate data and weight arrays and flatten arrays."""
     data = [ds[v].data.ravel() for v in variables]
     if VAR_WEIGHT in ds:
         weight = ds[VAR_WEIGHT].data.ravel()
@@ -169,8 +167,8 @@ def comp_hist_dask(
     """Compute histogram for dask data."""
     data, weight = separate_ravel(ds, variables)
     hist = dh.factory(*data, axes=bins, weights=weight)
-    h_values, _ = hist.to_dask_array()
-    return post_comp(h_values, bins_names)
+    res = hist.to_dask_array()
+    return post_comp(res[0], bins_names)
 
 
 def comp_hist_numpy(

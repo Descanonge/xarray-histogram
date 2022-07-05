@@ -58,6 +58,6 @@ On its way as well.
 
 ## Other packages
 
-[xhistogram](https://xhistogram.readthedocs.io/en/latest/) already exists and might suit you. It relies on numpy function and thus does not benefit of some performance upgrades brought by Boost (see performance comparisons). I also hoped to bring similar capacities with a much simpler code.
+[xhistogram](https://xhistogram.readthedocs.io/en/latest/) already exists and might suit you. It relies on numpy functions and thus does not benefit of some performance upgrades brought by Boost (see performance comparisons). I also hoped to bring similar features with a much simpler code. Some additional features of boost (overflow bins, rebinning) can easily be added (this is in the works).
 
 It is also quite straightforward to compute an histogram from a flattened array with just boost: [Boost: Xarray example](https://boost-histogram.readthedocs.io/en/latest/notebooks/xarray.html), or just dask-histogram by using `dataarray.data.ravel()`.
