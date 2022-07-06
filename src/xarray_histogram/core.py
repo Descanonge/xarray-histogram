@@ -127,13 +127,15 @@ def histogram(
 
     if density:
         widths = [np.diff(b.edges) for b in bins]
-        # from xhistogram
         if len(widths) == 1:
             area = widths[0]
         elif len(widths) == 2:
             area = np.outer(*widths)
         else:
-            area = np.prod(np.ix_(*widths))
+            # https://stackoverflow.com/a/43149109
+            # I added dtype=object to silence a warning for ragged arrays
+            # not sure how safe this is.
+            area = np.prod(np.array(np.ix_(*widths), dtype=object))
 
         area = xr.DataArray(area, dims=bins_names)
         hist = hist / area / hist.sum(bins_names)
@@ -204,11 +206,12 @@ def data_sanity_check(data: Sequence[xr.DataArray]):
     """
     if len(data) == 0:
         raise TypeError("Data sequence of length 0.")
-    dims0 = set(data[0].dims)
     for a in data:
         if not isinstance(a, xr.DataArray):
             raise TypeError("Data must be a xr.DataArray, "
                             f"a type {type(a).__name__} was supplied.")
+    dims0 = set(data[0].dims)
+    for a in data:
         if set(a.dims) != dims0:
             raise ValueError("Dimensions are different in supplied arrays.")
 
