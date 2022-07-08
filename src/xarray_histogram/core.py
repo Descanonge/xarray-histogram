@@ -32,8 +32,70 @@ VAR_WEIGHT = '_weight'
 
 AxisSpec = bh.axis.Axis | int | Sequence[int | float]
 
+
 class BinsMinMaxWarning(UserWarning):
     pass
+
+
+def histogram_varbins(data, bins, dims=None, weight=None, density=None):
+    data = to_list(data)
+    data_sanity_check(data)
+    variables = [a.name for a in data]
+
+    bins = to_list(bins)
+    for i, (b, v) in enumerate(zip(bins, variables)):
+        bin_dim = set(b.dims) - set(data[0].dims)
+        if len(bin_dim) == 0:
+            raise KeyError(f"No bins dimension found for {v} bins.")
+        if len(bin_dim) > 1:
+            raise KeyError(f"Two bins dimensions found for {v} bins.")
+        bins[i] = b.rename({list(bin_dim)[0]: '_bins'}).rename(f'bins_{v}')
+
+    bins_names = [b.name for b in bins]
+
+    bins_dims = set(bins[0].dims) & set(data[0].dims)
+    data_dims = set(data[0].dims)
+
+    if dims is None:
+        dims = data_dims
+
+    for b in bins:
+        if bins_dims & set(dims):
+            raise KeyError('bins dims cannot be flattened')
+
+    all_dask = has_all_dask(data)
+    if not all_dask:
+        for i, a in enumerate(data):
+            if not a._in_memory:
+                data[i] = a.load()
+
+    ds = xr.merge(data + bins, join='exact')
+
+    do_flat_array = (set(dims) == data_dims)
+    if not do_flat_array:
+        stacked_dim1 = list(bins_dims)
+        stacked_dim2 = data_dims - set(dims) - bins_dims
+        print(stacked_dim2)
+        ds_stack1 = ds.stack(stacked_dim1=stacked_dim1)
+
+        ds_int = ds_stack1.groupby('stacked_dim1').map(
+            comp_, shortcut=True,
+            args=[variables, bins_names, stacked_dim2]
+        )
+
+        out = ds_int.unstack()
+        return out
+
+    return ds
+
+
+def comp_(ds, variables, bins_names, stacked_dim):
+    bins = [bh.axis.Variable(ds[b]) for b in bins_names]
+    out = ds.stack(stacked_dim2=stacked_dim).groupby('stacked_dim2').map(
+        comp_hist_numpy, shortcut=True,
+        args=[variables, bins, bins_names]
+    )
+    return out
 
 
 def histogram(
