@@ -149,3 +149,34 @@ def test_1d_along(kind, density, weight):
         answer, _ = np.histogram(vals[i], bins=nbins, range=ranges,
                                  density=density, weights=w)
         assert_allclose(answer, h.isel(t=i).values, rtol=1)
+
+
+@pytest.mark.parametrize('kind', ['np', 'da'])
+def test_1d_varbins(kind):
+    nbins = 50
+    ranges = [(-r, r) for r in [2, 3, 4]]
+    shape = (3, 200, 200)
+    chunk_size = (1, 200, 100)
+    vals = np.random.normal(size=shape).astype(np.float32)
+
+    if kind == 'np':
+        pass
+    elif kind == 'da':
+        vals = da.from_array(vals, chunks=chunk_size)
+    else:
+        raise InternalError
+
+    dims = ['t', 'x', 'y']
+    data = xr.DataArray(vals, dims=dims, name='data')
+
+    bins = np.ones(shape=(shape[0], nbins+1))
+    for i in range(shape[0]):
+        bins[i] = np.linspace(*ranges[i], bins.shape[1])
+    bins = xr.DataArray(bins, dims=[dims[0], 'bins'])
+
+    h = xh.histogram_varbins(data, bins=bins, dims=['x', 'y'])
+
+    # Check values
+    for i in range(shape[0]):
+        answer, _ = np.histogram(vals[i], bins=nbins, range=ranges[i])
+        assert_allclose(answer, h.isel(t=i).values, rtol=1)

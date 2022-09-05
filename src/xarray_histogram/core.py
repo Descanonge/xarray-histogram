@@ -11,8 +11,9 @@ from typing import (
     Hashable,
     List,
     Sequence,
-    Union,
-    Tuple
+    Set,
+    Tuple,
+    Union
 )
 import warnings
 
@@ -43,7 +44,7 @@ def histogram(
         dims: Sequence[Hashable] | None = None,
         weight: xr.DataArray | None = None,
         density: bool = False
-):
+) -> xr.DataArray:
     """Compute histogram.
 
     Parameters
@@ -99,8 +100,7 @@ def histogram(
             if not a._in_memory:
                 data[i] = a.load()
 
-    # Merge everything together so it can be sent through a single
-    # groupby call.
+    # Merge everything together so it can be sent through a single groupby call.
     ds = xr.merge(data, join='exact')
 
     if all_dask:
@@ -144,31 +144,29 @@ def histogram(
     return hist
 
 
-def histogram_varbins(data, bins, dims=None, weight=None, density=None):
+def histogram_varbins(
+        data: xr.DataArray | Sequence[xr.DataArray],
+        bins: xr.DataArray | Sequence[xr.DataArray],
+        dims: Sequence[Hashable] | None = None,
+) -> xr.DataArray:
+    """Compute histogram for varying bins."""
     data = to_list(data)
     data_sanity_check(data)
     variables = [a.name for a in data]
-
-    bins = to_list(bins)
-    for i, (b, v) in enumerate(zip(bins, variables)):
-        bin_dim = set(b.dims) - set(data[0].dims)
-        if len(bin_dim) == 0:
-            raise KeyError(f"No bins dimension found for {v} bins.")
-        if len(bin_dim) > 1:
-            raise KeyError(f"Two bins dimensions found for {v} bins.")
-        bins[i] = b.rename({list(bin_dim)[0]: '_bins'}).rename(f'bins_{v}')
-
-    bins_names = [b.name for b in bins]
-
-    bins_dims = set(bins[0].dims) & set(data[0].dims)
     data_dims = set(data[0].dims)
 
+    bins = to_list(bins)
+    bins = manage_varbins_input(bins, data_dims, variables)
+    bins_names = [b.name for b in bins]
+    varbin_dims = set(bins[0].dims) & data_dims
+
     if dims is None:
-        dims = data_dims
+        dims = data_dims - varbin_dims
 
     for b in bins:
-        if bins_dims & set(dims):
-            raise KeyError('bins dims cannot be flattened')
+        if (err := varbin_dims & set(dims)):
+            raise KeyError(f'Bins vary along the {list(err)!r} dimensions which are'
+                           ' listed in `dims` argument and thus cannot be flattened.')
 
     all_dask = has_all_dask(data)
     if not all_dask:
@@ -178,30 +176,30 @@ def histogram_varbins(data, bins, dims=None, weight=None, density=None):
 
     ds = xr.merge(data + bins, join='exact')
 
-    do_flat_array = (set(dims) == data_dims)
-    if not do_flat_array:
-        stacked_dim1 = list(bins_dims)
-        stacked_dim2 = data_dims - set(dims) - bins_dims
-        ds_stack1 = ds.stack(stacked_dim1=stacked_dim1)
+    if all_dask:
+        comp_hist_func = comp_hist_dask
+    else:
+        comp_hist_func = comp_hist_numpy
 
-        ds_int = ds_stack1.groupby('stacked_dim1').map(
-            comp_, shortcut=True,
-            args=[variables, bins_names, stacked_dim2]
+    do_flat_array = (set(dims) == data_dims - varbin_dims)
+
+    stack_bin = ds.stack(_varbin_dims=list(varbin_dims))
+
+    if do_flat_array:
+        hist = stack_bin.groupby('_varbin_dims').map(
+            comp_hist_varbins_flat, shortcut=True,
+            args=[comp_hist_func, variables, bins_names]
         )
+    else:
+        stack_dims = data_dims - set(dims) - varbin_dims
+        hist = stack_bin.groupby('_varbin_dims').map(
+            comp_hist_varbins, shortcut=True,
+            args=[comp_hist_func, variables, bins_names, stack_dims]
+        )
+    hist = hist.unstack()
+    hist = hist.rename('hist')
 
-        out = ds_int.unstack()
-        return out
-
-    return ds
-
-
-def comp_(ds, variables, bins_names, stacked_dim):
-    bins = [bh.axis.Variable(ds[b]) for b in bins_names]
-    out = ds.stack(stacked_dim2=stacked_dim).groupby('stacked_dim2').map(
-        comp_hist_numpy, shortcut=True,
-        args=[variables, bins, bins_names]
-    )
-    return out
+    return hist
 
 
 def separate_ravel(
@@ -245,6 +243,36 @@ def comp_hist_numpy(
     data, weight = separate_ravel(ds, variables)
     hist.fill(*data, weight=weight)
     return post_comp(hist.values(), bins_names)
+
+
+def comp_hist_varbins_flat(
+        ds, comp_hist_func, variables, bins_names
+):
+    bins = [bh.axis.Variable(ds[b].to_numpy()) for b in bins_names]
+    out = comp_hist_func(ds, variables, bins, bins_names)
+    out = make_multicoordinates_bins(out, bins_names, bins)
+    return out
+
+
+def comp_hist_varbins(
+        ds, comp_hist_func, variables, bins_names, stack_dims
+):
+    bins = [bh.axis.Variable(ds[b].to_numpy()) for b in bins_names]
+    stack = ds.stack(stack_dims=stack_dims)
+    out = stack.groupby('stack_dims').map(
+        comp_hist_func, shortcut=True,
+        args=[variables, bins, bins_names]
+    )
+    return out
+
+
+def make_multicoordinates_bins(ds, bins_names, bins):
+    for name, b in zip(bins_names, bins):
+        i_name = 'i_' + name
+        ds = ds.rename({name: i_name})
+        ds = ds.assign_coords({name: (i_name, b.edges[:-1])})
+        ds[name].attrs['right_edge'] = b.edges[-1]
+    return ds
 
 
 def to_list(a: Union[Any, Sequence]) -> Sequence:
@@ -309,6 +337,7 @@ def manage_bins_input(
     Raises
     ------
     ValueError: If there are not as much bins specifications as data arrays.
+    IndexError: If specification has too much elements.
     """
     if len(bins) != len(data):
         raise ValueError(f"Not as much bins specifications ({len(bins)}) "
@@ -328,9 +357,38 @@ def manage_bins_input(
                 BinsMinMaxWarning)
             spec = [spec[0], float(a.min().values),
                     float(a.max().values)]
+        if len(spec) > 3:
+            raise IndexError("Binning axis specification must be [nbins, min, max]."
+                             f" Specification of length {len(spec)} passed.")
         bins_out.append(bh.axis.Regular(*spec))
 
     return bins_out
+
+
+def manage_varbins_input(
+        bins: Sequence[xr.DataArray],
+        data_dims: Set[Hashable],
+        variables: Sequence[Hashable]
+) -> Sequence[xr.DataArray]:
+    """Check varying bins input and rename binning dimensions.
+
+    Raises
+    ------
+    IndexError:
+    KeyError:
+    """
+    if len(bins) != len(variables):
+        raise IndexError("Different numbers of bins ({}) and variables ({})"
+                         .format(len(bins), len(variables)))
+
+    for i, (b, v) in enumerate(zip(bins, variables)):
+        bin_dim = set(b.dims) - data_dims
+        if len(bin_dim) == 0:
+            raise KeyError(f"No binning dimension found for {v} bins.")
+        if len(bin_dim) > 1:
+            raise KeyError(f"More than one binning dimensions found for {v} bins.")
+        bins[i] = b.rename({list(bin_dim)[0]: '_bins'}).rename(f'bins_{v}')
+    return bins
 
 
 def has_all_dask(data) -> bool:
