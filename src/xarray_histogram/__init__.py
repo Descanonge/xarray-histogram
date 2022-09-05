@@ -7,6 +7,6 @@ from .core import (
 __version__ = '0.0.1'
 
 __all__ = [
-    histogram,
-    silent_minmax_warning
+    'histogram',
+    'silent_minmax_warning'
 ]

@@ -32,6 +32,7 @@ VAR_WEIGHT = '_weight'
 
 AxisSpec = bh.axis.Axis | int | Sequence[int | float]
 
+
 class BinsMinMaxWarning(UserWarning):
     pass
 

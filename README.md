@@ -16,7 +16,7 @@ Bins can be specified similarly to numpy functions:
 import xarray_histogram as xh
 hist = xh.histogram(data, bins=(100, 0., 10.))
 ```
-but also can using boost [axes](https://boost-histogram.readthedocs.io/en/latest/user-guide/axes.html), benifiting from their features:
+but also using boost [axes](https://boost-histogram.readthedocs.io/en/latest/user-guide/axes.html), benifiting from their features:
 ``` python
 import boost_histogram as bh
 hist = xh.histogram(data, bins=bh.axis.Regular(100, 0., 10.))

@@ -13,13 +13,14 @@
 # import os
 # import sys
 # sys.path.insert(0, os.path.abspath('.'))
-
+import xarray_histogram
 
 # -- Project information -----------------------------------------------------
 
 project = 'XArray-Histogram'
 copyright = '2022, Clément Haëck'
 author = 'Clément Haëck'
+release = xarray_histogram.__version__
 
 
 # -- General configuration ---------------------------------------------------
@@ -28,7 +29,20 @@ author = 'Clément Haëck'
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
 extensions = [
+    'sphinx_rtd_theme',
+    'sphinx.ext.autosectionlabel',
+    'sphinx.ext.autodoc',
+    'sphinx.ext.autosummary',
+    'sphinx.ext.napoleon'
 ]
+
+napoleon_use_param = True
+napoleon_attr_annotations = True
+napoleon_use_ivar = True
+napoleon_preprocess_types = False
+always_document_param_types = True
+
+autosummary_generate = False
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
@@ -44,7 +58,7 @@ exclude_patterns = []
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
 #
-html_theme = 'alabaster'
+html_theme = 'sphinx_rtd_theme'
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
