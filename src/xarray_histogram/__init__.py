@@ -1,12 +1,5 @@
+from .core import histogram, silent_minmax_warning
 
-from .core import (
-    histogram,
-    silent_minmax_warning
-)
+__version__ = "0.0.1"
 
-__version__ = '0.0.1'
-
-__all__ = [
-    'histogram',
-    'silent_minmax_warning'
-]
+__all__ = ["histogram", "silent_minmax_warning"]

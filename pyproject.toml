@@ -71,6 +71,10 @@ select = [
 line-length = 88
 target-version = 'py311'
 
+[tool.ruff.format]
+quote-style = 'double'
+
+[tool.ruff.lint]
 ignore = [
        'E226', # missing whitespace around arithmetic operator
        'D204', # one blank line after class
@@ -78,11 +82,8 @@ ignore = [
        'D417', # not all parameters need doc
 ]
 
-[too.ruff.pycodestyle]
+[tool.ruff.lint.pycodestyle]
 max-line-length = 90
 
-[tool.ruff.pydocstyle]
+[tool.ruff.lint.pydocstyle]
 convention = 'numpy'
-
-[tool.ruff.format]
-quote-style = 'double'

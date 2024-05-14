@@ -7,16 +7,18 @@
 
 from __future__ import annotations
 
+import typing as t
 import warnings
 from collections import abc
 
 import boost_histogram as bh
 import numpy as np
 import xarray as xr
+from xarray.core.utils import is_dask_collection
 
 try:
-    import dask.array as dsa
     import dask_histogram as dh
+    from dask.array.core import Array as DaskArray
 
     HAS_DASK = True
 except ImportError:
@@ -27,28 +29,32 @@ VAR_WEIGHT = "_weight"
 
 AxisSpec = bh.axis.Axis | int | abc.Sequence[int | float]
 
+DA = t.TypeVar("DA", bound=xr.DataArray)
+
 
 class BinsMinMaxWarning(UserWarning):
+    """Warning if range of bins is not supplied and must be computed from data."""
+
     pass
 
 
 def histogram(
     *data: xr.DataArray,
     bins: abc.Sequence[AxisSpec],
-    dims: abc.Sequence[abc.Hashable] | None = None,
+    dims: abc.Collection[abc.Hashable] | None = None,
     weight: xr.DataArray | None = None,
     density: bool = False,
-):
+) -> xr.DataArray:
     """Compute histogram.
 
     Parameters
     ----------
-    data : DataArray or sequence of DataArray
+    data
         The `xarray.DataArray` to compute the histogram from. To compute a
         multi-dimensional histogram supply a sequence of as many arrays
         as the histogram dimensionality. All arrays must have the same
         dimensions.
-    bins : A sequence of axis specification, optional
+    bins
         Specification of the histograms bins. Supply a sequence of
         specifications for a multi-dimensional array, in the same order as
         the `data` arrays.
@@ -60,55 +66,58 @@ def histogram(
           bins will be linearly spaced
         * the number of bins, the minimum and maximum values are computed from the data
           on the spot.
-    dims : sequence of str, optional
+    dims
         Dimensions to compute the histogram along to. If left to None the
         data is flattened along all axis.
-    weight : DataArray, optional
-        `xarray.DataArray` of the weights to apply for each data-point.
-        It must have the same dimensions as the data arrays.
-    density : bool, optional
+    weight
+        Array of the weights to apply for each data-point. It will be broadcasted
+        against the data arrays.
+    density
         If true normalize the histogram so that its integral is one.
         Does not take into account `weight`. Default is false.
 
 
     Returns
     -------
-    histogram : DataArray
+    histogram
         DataArray named `hist_<variable name>` or just `hist` for
         multi-dimensional histograms. The bins coordinates are named
         `bins_<variable name>`.
     """
-    data_sanity_check(data)
-    variables = [a.name for a in data]
+    in_data = list(data)
+    data_sanity_check(in_data)
+    variables = [a.name for a in in_data]
 
-    bins = manage_bins_input(bins, data)
-    bins_names = ["bins_" + v for v in variables]
+    bins = manage_bins_input(bins, in_data)
+    bins_names = [f"{v}_bins" for v in variables]
 
     if weight is not None:
-        weight_sanity_check(weight, data)
         weight = weight.rename(VAR_WEIGHT)
-        data.append(weight)
+        in_data.append(weight)
 
-    all_dask = has_all_dask(data)
-    if not all_dask:
-        for i, a in enumerate(data):
-            if not a._in_memory:
-                data[i] = a.load()
+    in_data = list(xr.broadcast(*in_data))
+
+    if not is_all_dask(in_data):
+        comp_hist_func = comp_hist_numpy
+        for a in in_data:
+            a.compute()
+    else:
+        comp_hist_func = comp_hist_dask
 
     # Merge everything together so it can be sent through a single
     # groupby call.
-    ds = xr.merge(data, join="exact")
+    ds = xr.merge(in_data, join="exact")
+    data_dims = ds.dims
 
-    if all_dask:
-        comp_hist_func = comp_hist_dask
-    else:
-        comp_hist_func = comp_hist_numpy
+    if dims is None:
+        dims = data_dims
 
-    do_flat_array = dims is None or set(dims) == set(data[0].dims)
-    if do_flat_array:
+    if set(dims) == set(data_dims):
+        # on flattened array
         hist = comp_hist_func(ds, variables, bins, bins_names)
     else:
-        stacked_dim = [d for d in data[0].dims if d not in dims]
+        # stack dimensions that we don't flatten
+        stacked_dim = [d for d in data_dims if d not in dims]
         ds_stacked = ds.stack(stacked_dim=stacked_dim)
 
         hist = ds_stacked.groupby("stacked_dim").map(
@@ -117,7 +126,7 @@ def histogram(
         hist = hist.unstack()
 
     hist = hist.rename("hist")
-    for name, b in zip(bins_names, bins):
+    for name, b in zip(bins_names, bins, strict=True):
         hist = hist.assign_coords({name: b.edges[:-1]})
         hist[name].attrs["right_edge"] = b.edges[-1]
 
@@ -125,7 +134,7 @@ def histogram(
         widths = [np.diff(b.edges) for b in bins]
         if len(widths) == 1:
             area = widths[0]
-        elif len(widths) == 2:
+        elif len(widths) == 2:  # noqa: PLR2004
             area = np.outer(*widths)
         else:
             # https://stackoverflow.com/a/43149109
@@ -133,16 +142,24 @@ def histogram(
             # not sure how safe this is.
             area = np.prod(np.array(np.ix_(*widths), dtype=object))
 
-        area = xr.DataArray(area, dims=bins_names)
-        hist = hist / area / hist.sum(bins_names)
+        area_xr = xr.DataArray(area, dims=bins_names)
+        hist = hist / area_xr / hist.sum(bins_names)
 
     return hist
 
 
 def separate_ravel(
-    ds: xr.DataSet, variables: abc.Sequence[str]
-) -> tuple[list[xr.DataArray], xr.DataArray]:
-    """Separate data and weight arrays and flatten arrays."""
+    ds: xr.Dataset, variables: abc.Sequence[abc.Hashable]
+) -> tuple[list[DaskArray] | list[np.ndarray], DaskArray | np.ndarray | None]:
+    """Separate data and weight arrays and flatten arrays.
+
+    Returns
+    -------
+    data
+        List of data arrays.
+    weight
+        Array of weights if present in dataset, None otherwise.
+    """
     data = [ds[v].data.ravel() for v in variables]
     if VAR_WEIGHT in ds:
         weight = ds[VAR_WEIGHT].data.ravel()
@@ -151,35 +168,31 @@ def separate_ravel(
     return data, weight
 
 
-def post_comp(h_values, bins_names):
-    """Create an histogram DataArray."""
-    return xr.DataArray(h_values, dims=bins_names)
-
-
 def comp_hist_dask(
     ds: xr.Dataset,
-    variables: abc.Sequence[str],
+    variables: abc.Sequence[abc.Hashable],
     bins: abc.Sequence[bh.axis.Axis],
-    bins_names: abc.Sequence[str],
+    bins_names: abc.Sequence[abc.Hashable],
 ) -> xr.DataArray:
     """Compute histogram for dask data."""
     data, weight = separate_ravel(ds, variables)
-    hist = dh.factory(*data, axes=bins, weights=weight)
+    hist = dh.factory(*data, axes=bins, weights=weight)  # type: ignore
     res = hist.to_dask_array()
-    return post_comp(res[0], bins_names)
+
+    return xr.DataArray(res[0], bins_names)
 
 
 def comp_hist_numpy(
     ds: xr.Dataset,
-    variables: abc.Sequence[str],
+    variables: abc.Sequence[abc.Hashable],
     bins: abc.Sequence[bh.axis.Axis],
-    bins_names: abc.Sequence[str],
+    bins_names: abc.Sequence[abc.Hashable],
 ) -> xr.DataArray:
     """Compute histogram for numpy data."""
     hist = bh.Histogram(*bins)
     data, weight = separate_ravel(ds, variables)
     hist.fill(*data, weight=weight)
-    return post_comp(hist.values(), bins_names)
+    return xr.DataArray(hist.values(), bins_names)
 
 
 def data_sanity_check(data: abc.Sequence[xr.DataArray]):
@@ -205,7 +218,9 @@ def data_sanity_check(data: abc.Sequence[xr.DataArray]):
             raise ValueError("Dimensions are different in supplied arrays.")
 
 
-def weight_sanity_check(weight, data):
+def weight_sanity_check(
+    weight: abc.Sequence[xr.DataArray], data: abc.Sequence[xr.DataArray]
+):
     """Ensure weight is correctly formated.
 
     Raises
@@ -250,26 +265,40 @@ def manage_bins_input(
             bins_out.append(spec)
             continue
         if isinstance(spec, int):
-            spec = [spec]
-        if len(spec) < 3:
+            nbins = spec
             warnings.warn(
                 (
                     "Range was not supplied, the minimum and maximum values "
-                    "will have to be computed. use `silent_minmax_warning` to "
-                    "ignore this warning."
+                    "will have to be computed. use `silent_minmax_warning()` to "
+                    "silent this warning."
                 ),
                 BinsMinMaxWarning,
+                stacklevel=1,
             )
-            spec = [spec[0], float(a.min().values), float(a.max().values)]
-        bins_out.append(bh.axis.Regular(*spec))
+            start = float(a.min().values)
+            stop = float(a.max().values)
+        else:
+            if len(spec) != 3:  # noqa: PLR2004
+                raise IndexError(
+                    f"Unexpected length of regular bins specification ({len(spec)})"
+                )
+            if not isinstance(spec[0], int):
+                raise TypeError(
+                    "First item of bins specification should be an integer: "
+                    f"the number of bins. Received {type(spec[0])}"
+                )
+
+            nbins = spec[0]
+            start, stop = spec[1:]
+        bins_out.append(bh.axis.Regular(nbins, start, stop))
 
     return bins_out
 
 
-def has_all_dask(data) -> bool:
-    """Check if all data is in dask format.
+def is_all_dask(data: abc.Sequence[xr.DataArray]) -> bool:
+    """Check if all the variables are in dask format.
 
-    And if dask-histogram is available.
+    Only return true if Dask and Dask-histogram are imported.
     """
-    all_dask = HAS_DASK and all(isinstance(a.data, dsa.core.Array) for a in data)
+    all_dask = HAS_DASK and all(is_dask_collection(a.data) for a in data)
     return all_dask
