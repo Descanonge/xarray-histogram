@@ -7,7 +7,6 @@
 
 from __future__ import annotations
 
-import typing as t
 import warnings
 from collections import abc
 
@@ -28,8 +27,6 @@ except ImportError:
 VAR_WEIGHT = "_weight"
 
 AxisSpec = bh.axis.Axis | int | abc.Sequence[int | float]
-
-DA = t.TypeVar("DA", bound=xr.DataArray)
 
 
 class BinsMinMaxWarning(UserWarning):
@@ -179,7 +176,7 @@ def comp_hist_dask(
     hist = dh.factory(*data, axes=bins, weights=weight)  # type: ignore
     res = hist.to_dask_array()
 
-    return xr.DataArray(res[0], bins_names)
+    return xr.DataArray(res[0], dims=bins_names)
 
 
 def comp_hist_numpy(
@@ -192,7 +189,7 @@ def comp_hist_numpy(
     hist = bh.Histogram(*bins)
     data, weight = separate_ravel(ds, variables)
     hist.fill(*data, weight=weight)
-    return xr.DataArray(hist.values(), bins_names)
+    return xr.DataArray(hist.values(), dims=bins_names)
 
 
 def data_sanity_check(data: abc.Sequence[xr.DataArray]):
