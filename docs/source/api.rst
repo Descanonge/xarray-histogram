@@ -17,7 +17,6 @@ Content
 Submodules
 ----------
 
-.. rubric:: Submodules
 .. autosummary::
    :toctree: _api
    :nosignatures:
