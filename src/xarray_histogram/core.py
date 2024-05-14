@@ -32,8 +32,6 @@ AxisSpec = bh.axis.Axis | int | abc.Sequence[int | float]
 class BinsMinMaxWarning(UserWarning):
     """Warning if range of bins is not supplied and must be computed from data."""
 
-    pass
-
 
 def histogram(
     *data: xr.DataArray,
@@ -52,17 +50,16 @@ def histogram(
         as the histogram dimensionality. All arrays must have the same
         dimensions.
     bins
-        Specification of the histograms bins. Supply a sequence of
-        specifications for a multi-dimensional array, in the same order as
-        the `data` arrays.
+        Sequence of specifications for the histogram bins, in the same order as the
+        variables of `data`.
 
         Specification can either be:
 
-        * a `boost-histogram.axis.Axis` or subtype.
+        * a :class:`boost-histogram.axis.Axis`.
         * a tuple of (number of bins, minimum value, maximum value) in which case the
           bins will be linearly spaced
-        * the number of bins, the minimum and maximum values are computed from the data
-          on the spot.
+        * only the number of bins, the minimum and maximum values are then computed from
+          the data on the spot.
     dims
         Dimensions to compute the histogram along to. If left to None the
         data is flattened along all axis.
@@ -73,13 +70,12 @@ def histogram(
         If true normalize the histogram so that its integral is one.
         Does not take into account `weight`. Default is false.
 
-
     Returns
     -------
     histogram
-        DataArray named `hist_<variable name>` or just `hist` for
-        multi-dimensional histograms. The bins coordinates are named
-        `bins_<variable name>`.
+        DataArray named `<variables names>_histogram` (for multi-dimensional histograms
+        the names are separated by underscores). The bins coordinates are named
+        `<variable name>_bins`.
     """
     in_data = list(data)
     data_sanity_check(in_data)
@@ -122,7 +118,7 @@ def histogram(
         )
         hist = hist.unstack()
 
-    hist = hist.rename("hist")
+    hist = hist.rename("_".join(map(str, variables + ["histogram"])))
     for name, b in zip(bins_names, bins, strict=True):
         hist = hist.assign_coords({name: b.edges[:-1]})
         hist[name].attrs["right_edge"] = b.edges[-1]
