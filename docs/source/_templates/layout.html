@@ -1,0 +1,31 @@
+{% extends "sphinx_book_theme/layout.html" %}
+<!-- remove content footer -->
+
+{% block docs_main %}
+<div class="bd-content">
+    <div class="bd-article-container">
+        {# Article header #}
+        <div class="bd-header-article">{% include "sections/header-article.html" %}</div>
+        {# Article content #}
+        {% block docs_body %}
+        {# This is empty and only shows up if text has been highlighted by the URL #}
+        {% include "components/searchbox.html" %}
+        <article class="bd-article" role="main">
+            {% block body %}{% endblock %}
+        </article>
+        {% endblock docs_body %}
+        {# Article Footer #}
+        {% if theme_show_prev_next %}
+        <footer class="bd-footer-article">
+            {% include "sections/footer-article.html" %}
+        </footer>
+        {% endif %}
+    </div>
+    {# Secondary sidebar #}
+    {% block docs_toc %}
+    {% if not remove_sidebar_secondary %}
+    <div class="bd-sidebar-secondary bd-toc">{% include "sections/sidebar-secondary.html" %}</div>
+    {% endif %}
+    {% endblock docs_toc %}
+</div>
+{% endblock docs_main %}

@@ -1,16 +1,25 @@
+.. currentmodule:: xarray_histogram
 
-API References
-==============
+API Reference
+=============
 
-.. currentmodule:: xarray_histogram.core
+.. automodule:: xarray_histogram
 
-.. rubric:: Content
+Content
+-------
+
 .. autosummary::
-   AxisSpec
-   histogram
-   silent_minmax_warning
+   :nosignatures:
 
+   ~core.histogram
+   ~core.silent_minmax_warning
 
-.. autoclass:: AxisSpec
-.. autofunction:: histogram
-.. autofunction:: silent_minmax_warning
+Submodules
+----------
+
+.. rubric:: Submodules
+.. autosummary::
+   :toctree: _api
+   :nosignatures:
+
+   core

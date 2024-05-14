@@ -47,7 +47,14 @@ autodoc_typehints = "description"
 autodoc_typehints_format = "short"
 
 # Intersphinx config
-intersphinx_mapping = {"python": ("https://docs.python.org/3/", None)}
+intersphinx_mapping = {
+    "python": ("https://docs.python.org/3/", None),
+    "numpy": ("https://numpy.org/doc/stable", None),
+    "dask": ("https://docs.dask.org/en/latest", None),
+    "xarray": ("https://docs.xarray.dev/en/stable", None),
+    "boost-histogram": ("https://boost-histogram.readthedocs.io/en/latest", None),
+    "dask-histogram": ("https://dask-histogram.readthedocs.io/en/stable", None),
+}
 
 ## HTML Output
 
