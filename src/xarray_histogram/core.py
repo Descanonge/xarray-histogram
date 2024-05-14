@@ -17,12 +17,13 @@ import xarray as xr
 try:
     import dask.array as dsa
     import dask_histogram as dh
+
     HAS_DASK = True
 except ImportError:
     HAS_DASK = False
 
 
-VAR_WEIGHT = '_weight'
+VAR_WEIGHT = "_weight"
 
 AxisSpec = bh.axis.Axis | int | abc.Sequence[int | float]
 
@@ -96,14 +97,14 @@ def histogram(
 
     # Merge everything together so it can be sent through a single
     # groupby call.
-    ds = xr.merge(data, join='exact')
+    ds = xr.merge(data, join="exact")
 
     if all_dask:
         comp_hist_func = comp_hist_dask
     else:
         comp_hist_func = comp_hist_numpy
 
-    do_flat_array = (dims is None or set(dims) == set(data[0].dims))
+    do_flat_array = dims is None or set(dims) == set(data[0].dims)
     if do_flat_array:
         hist = comp_hist_func(ds, variables, bins, bins_names)
     else:
@@ -111,15 +112,14 @@ def histogram(
         ds_stacked = ds.stack(stacked_dim=stacked_dim)
 
         hist = ds_stacked.groupby("stacked_dim").map(
-            comp_hist_func, shortcut=True,
-            args=[variables, bins, bins_names]
+            comp_hist_func, shortcut=True, args=[variables, bins, bins_names]
         )
         hist = hist.unstack()
 
-    hist = hist.rename('hist')
+    hist = hist.rename("hist")
     for name, b in zip(bins_names, bins):
         hist = hist.assign_coords({name: b.edges[:-1]})
-        hist[name].attrs['right_edge'] = b.edges[-1]
+        hist[name].attrs["right_edge"] = b.edges[-1]
 
     if density:
         widths = [np.diff(b.edges) for b in bins]
@@ -195,8 +195,10 @@ def data_sanity_check(data: abc.Sequence[xr.DataArray]):
         raise TypeError("Data sequence of length 0.")
     for a in data:
         if not isinstance(a, xr.DataArray):
-            raise TypeError("Data must be a xr.DataArray, "
-                            f"a type {type(a).__name__} was supplied.")
+            raise TypeError(
+                "Data must be a xr.DataArray, "
+                f"a type {type(a).__name__} was supplied."
+            )
     dims0 = set(data[0].dims)
     for a in data:
         if set(a.dims) != dims0:
@@ -213,8 +215,10 @@ def weight_sanity_check(weight, data):
     """
     dims0 = set(data[0].dims)
     if not isinstance(weight, xr.DataArray):
-        raise TypeError("Weights must be a xr.DataArray, "
-                        f"a type {type(weight).__name__} was supplied.")
+        raise TypeError(
+            "Weights must be a xr.DataArray, "
+            f"a type {type(weight).__name__} was supplied."
+        )
     if set(weight.dims) != dims0:
         raise ValueError("Dimensions are different in supplied weights.")
     # We only check for correct set of dimensions. Weight will be aligned
@@ -236,8 +240,10 @@ def manage_bins_input(
     ValueError: If there are not as much bins specifications as data arrays.
     """
     if len(bins) != len(data):
-        raise ValueError(f"Not as much bins specifications ({len(bins)}) "
-                         f"as data arrays ({len(data)}) were supplied")
+        raise ValueError(
+            f"Not as much bins specifications ({len(bins)}) "
+            f"as data arrays ({len(data)}) were supplied"
+        )
     bins_out = []
     for spec, a in zip(bins, data):  # noqa: B905
         if isinstance(spec, bh.axis.Axis):
@@ -247,12 +253,14 @@ def manage_bins_input(
             spec = [spec]
         if len(spec) < 3:
             warnings.warn(
-                ("Range was not supplied, the minimum and maximum values "
-                 "will have to be computed. use `silent_minmax_warning` to "
-                 "ignore this warning."),
-                BinsMinMaxWarning)
-            spec = [spec[0], float(a.min().values),
-                    float(a.max().values)]
+                (
+                    "Range was not supplied, the minimum and maximum values "
+                    "will have to be computed. use `silent_minmax_warning` to "
+                    "ignore this warning."
+                ),
+                BinsMinMaxWarning,
+            )
+            spec = [spec[0], float(a.min().values), float(a.max().values)]
         bins_out.append(bh.axis.Regular(*spec))
 
     return bins_out
@@ -263,6 +271,5 @@ def has_all_dask(data) -> bool:
 
     And if dask-histogram is available.
     """
-    all_dask = HAS_DASK and all(isinstance(a.data, dsa.core.Array)
-                                for a in data)
+    all_dask = HAS_DASK and all(isinstance(a.data, dsa.core.Array) for a in data)
     return all_dask
