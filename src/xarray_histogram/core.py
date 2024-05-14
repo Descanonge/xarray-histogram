@@ -117,7 +117,7 @@ def histogram(
         stacked_dim = [d for d in data_dims if d not in dims]
         ds_stacked = ds.stack(stacked_dim=stacked_dim)
 
-        hist = ds_stacked.groupby("stacked_dim").map(
+        hist = ds_stacked.groupby("stacked_dim", squeeze=False).map(
             comp_hist_func, shortcut=True, args=[variables, bins, bins_names]
         )
         hist = hist.unstack()
