@@ -56,18 +56,6 @@ disable_error_code = ['annotation-unchecked']
 ignore_missing_imports = true
 
 [tool.ruff]
-select = [
-       'E',  # pycodestyle
-       'W',  # pycodestyle
-       'I',  # isort
-       'N',  # pep8-name
-       'B',  # bugbear
-       'G',  # flake8-logging-format
-       'F',  # pyflakes
-       'UP',  #pyupgrade
-       'D',  #pydocstyle
-       'PL', #pylint
-]
 line-length = 88
 target-version = 'py311'
 
@@ -80,6 +68,19 @@ ignore = [
        'D204', # one blank line after class
        'D213', # multiline docstring start at 2nd line
        'D417', # not all parameters need doc
+]
+
+select = [
+       'E',  # pycodestyle
+       'W',  # pycodestyle
+       'I',  # isort
+       'N',  # pep8-name
+       'B',  # bugbear
+       'G',  # flake8-logging-format
+       'F',  # pyflakes
+       'UP',  #pyupgrade
+       'D',  #pydocstyle
+       'PL', #pylint
 ]
 
 [tool.ruff.lint.pycodestyle]
