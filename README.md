@@ -46,11 +46,20 @@ All of this works seamlessly with data stored in numpy or dask arrays.
 - [boost-histogram](https://github.com/scikit-hep/boost-histogram)
 - [dask](https://www.dask.org/) and [dask-histogram](https://github.com/dask-contrib/dask-histogram): Optional, if not available all data will be eagerly loaded.
 
+## Installation
+
+From source with:
+``` shell
+git clone https://github.com/Descanonge/xarray-histogram
+cd xarray-histogram
+pypi install -e .
+```
+
+Soon on Pypi.
+
 ## Documentation
 
-Documentation and installation steps will be available on readthedocs.
-
-For now install from source using `pip install -e .`.
+Documentation available at https://xarray-histogram.readthedocs.io
 
 ## Tests and performance
 
