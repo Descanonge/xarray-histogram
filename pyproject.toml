@@ -1,0 +1,88 @@
+# Project build file
+
+[build-system]
+requires = ['setuptools']
+build-backend = 'setuptools.build_meta'
+
+[project]
+version = '0.0.1'
+
+name = 'xarray-histogram'
+authors = [
+    {name='Clément Haëck', email='clement.haeck@posteo.net'}
+]
+description = 'Compute histograms from XArray data.'
+
+readme = 'README.md'
+requires-python = '>=3.11'
+classifiers = [
+    'Development Status :: 4 - Beta',
+    'License :: OSI Approved :: MIT License',
+
+    'Programming Language :: Python',
+    'Programming Language :: Python :: 3 :: Only',
+    'Programming Language :: Python :: 3.11',
+    'Operating System :: OS Independent',
+
+    'Intended Audience :: Developers',
+    'Intended Audience :: Science/Research',
+    'Topic :: Utilities'
+]
+
+dependencies = [
+    'xarray',
+]
+
+[project.optional-dependencies]
+dev = [
+    'dask',
+    'sphinx==6.2.1',
+    'sphinx-book-theme==1.0.1',
+    'ruff',
+    'mypy>=1.5',
+    'pytest>=7.4',
+    'hypothesis',
+    'coverage',
+    'pytest-cov'
+]
+
+[project.urls]
+'Source' = 'https://github.com/Descanonge/xarray-histogram'
+'Documentation' = 'https://xarray-histogram.readthedocs.io'
+
+[tool.mypy]
+disable_error_code = ['annotation-unchecked']
+# allow_untyped_defs = true
+ignore_missing_imports = true
+
+[tool.ruff]
+select = [
+       'E',  # pycodestyle
+       'W',  # pycodestyle
+       'I',  # isort
+       'N',  # pep8-name
+       'B',  # bugbear
+       'G',  # flake8-logging-format
+       'F',  # pyflakes
+       'UP',  #pyupgrade
+       'D',  #pydocstyle
+       'PL', #pylint
+]
+line-length = 88
+target-version = 'py311'
+
+ignore = [
+       'E226', # missing whitespace around arithmetic operator
+       'D204', # one blank line after class
+       'D213', # multiline docstring start at 2nd line
+       'D417', # not all parameters need doc
+]
+
+[too.ruff.pycodestyle]
+max-line-length = 90
+
+[tool.ruff.pydocstyle]
+convention = 'numpy'
+
+[tool.ruff.format]
+quote-style = 'double'
