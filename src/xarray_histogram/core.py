@@ -55,7 +55,7 @@ def histogram(
 
         Specification can either be:
 
-        * a :class:`boost-histogram.axis.Axis`.
+        * a :class:`boost_histogram.axis.Axis`.
         * a tuple of (number of bins, minimum value, maximum value) in which case the
           bins will be linearly spaced
         * only the number of bins, the minimum and maximum values are then computed from
@@ -73,9 +73,9 @@ def histogram(
     Returns
     -------
     histogram
-        DataArray named `<variables names>_histogram` (for multi-dimensional histograms
-        the names are separated by underscores). The bins coordinates are named
-        `<variable name>_bins`.
+        DataArray named ``<variables names>_histogram`` (for multi-dimensional
+        histograms the names are separated by underscores). The bins coordinates are
+        named ``<variable name>_bins``.
     """
     in_data = list(data)
     data_sanity_check(in_data)
@@ -193,9 +193,12 @@ def data_sanity_check(data: abc.Sequence[xr.DataArray]):
 
     Raises
     ------
-    TypeError: If a 0-length sequence was supplied.
-    TypeError: If any data is not a `xarray.DataArray`.
-    ValueError: If set of dimensions are not identical in all arrays.
+    TypeError
+        If a 0-length sequence was supplied.
+    TypeError
+        If any data is not a :class:`xarray.DataArray`.
+    ValueError
+        If set of dimensions are not identical in all arrays.
     """
     if len(data) == 0:
         raise TypeError("Data sequence of length 0.")
@@ -218,8 +221,10 @@ def weight_sanity_check(
 
     Raises
     ------
-    TypeError: If weight is not a `xarray.DataArray`.
-    ValueError: If the set of dimensions are not the same in weights as data.
+    TypeError
+        If weight is not a :class:`xarray.DataArray`.
+    ValueError
+        If the set of dimensions are not the same in weights as data.
     """
     dims0 = set(data[0].dims)
     if not isinstance(weight, xr.DataArray):
@@ -245,7 +250,8 @@ def manage_bins_input(
 
     Raises
     ------
-    ValueError: If there are not as much bins specifications as data arrays.
+    ValueError
+        If there are not as much bins specifications as data arrays.
     """
     if len(bins) != len(data):
         raise ValueError(
