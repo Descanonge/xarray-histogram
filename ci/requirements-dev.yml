@@ -1,0 +1,17 @@
+channels:
+    - conda-forge
+    - nodefaults
+dependencies:
+    - python = 3.11
+
+    - numpy >= 1.26
+    - xarray >= 2024.5
+    - dask >= 2024.5
+
+    - sphinx
+    - sphinx-book-theme
+
+    - ruff
+    - mypy >= 1.10
+    - pytest >= 7.4
+    - hypothesis
