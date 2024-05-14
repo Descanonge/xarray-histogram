@@ -1,4 +1,4 @@
-"Main functions."
+"""Main functions."""
 
 # This file is part of the 'xarray-histogram' project
 # (http://github.com/Descanonge/xarray-histogram) and subject
@@ -6,15 +6,9 @@
 # at the root of this project. © 2022 Clément Haëck
 
 from __future__ import annotations
-from typing import (
-    Any,
-    Hashable,
-    List,
-    Sequence,
-    Union,
-    Tuple
-)
+
 import warnings
+from collections import abc
 
 import boost_histogram as bh
 import numpy as np
@@ -30,7 +24,7 @@ except ImportError:
 
 VAR_WEIGHT = '_weight'
 
-AxisSpec = bh.axis.Axis | int | Sequence[int | float]
+AxisSpec = bh.axis.Axis | int | abc.Sequence[int | float]
 
 
 class BinsMinMaxWarning(UserWarning):
@@ -38,11 +32,11 @@ class BinsMinMaxWarning(UserWarning):
 
 
 def histogram(
-        data: xr.DataArray | Sequence[xr.DataArray],
-        bins: AxisSpec | Sequence[AxisSpec],
-        dims: Sequence[Hashable] | None = None,
-        weight: xr.DataArray | None = None,
-        density: bool = False
+    *data: xr.DataArray,
+    bins: abc.Sequence[AxisSpec],
+    dims: abc.Sequence[abc.Hashable] | None = None,
+    weight: xr.DataArray | None = None,
+    density: bool = False,
 ):
     """Compute histogram.
 
@@ -53,15 +47,18 @@ def histogram(
         multi-dimensional histogram supply a sequence of as many arrays
         as the histogram dimensionality. All arrays must have the same
         dimensions.
-    bins : Axis specification or sequence of axis specification, optional
+    bins : A sequence of axis specification, optional
         Specification of the histograms bins. Supply a sequence of
         specifications for a multi-dimensional array, in the same order as
         the `data` arrays.
-        Specification can either be: a `boost-histogram.axis.Axis` or subtype.
-        It can also be a tuple of (number of bins, minimum value,
-        maximum value) in which case the bins will be linearly spaced.
-        Only the number of bins can be specified, the min-max values are then
-        computed on the spot.
+
+        Specification can either be:
+
+        * a `boost-histogram.axis.Axis` or subtype.
+        * a tuple of (number of bins, minimum value, maximum value) in which case the
+          bins will be linearly spaced
+        * the number of bins, the minimum and maximum values are computed from the data
+          on the spot.
     dims : sequence of str, optional
         Dimensions to compute the histogram along to. If left to None the
         data is flattened along all axis.
@@ -80,13 +77,11 @@ def histogram(
         multi-dimensional histograms. The bins coordinates are named
         `bins_<variable name>`.
     """
-    data = to_list(data)
     data_sanity_check(data)
     variables = [a.name for a in data]
 
-    bins = to_list(bins)
     bins = manage_bins_input(bins, data)
-    bins_names = ['bins_' + v for v in variables]
+    bins_names = ["bins_" + v for v in variables]
 
     if weight is not None:
         weight_sanity_check(weight, data)
@@ -145,8 +140,8 @@ def histogram(
 
 
 def separate_ravel(
-        ds: xr.DataSet, variables: Sequence[str]
-) -> Tuple[List[xr.DataArray], xr.DataArray]:
+    ds: xr.DataSet, variables: abc.Sequence[str]
+) -> tuple[list[xr.DataArray], xr.DataArray]:
     """Separate data and weight arrays and flatten arrays."""
     data = [ds[v].data.ravel() for v in variables]
     if VAR_WEIGHT in ds:
@@ -162,10 +157,10 @@ def post_comp(h_values, bins_names):
 
 
 def comp_hist_dask(
-        ds: xr.Dataset,
-        variables: Sequence[str],
-        bins: Sequence[bh.axis.Axis],
-        bins_names: Sequence[str]
+    ds: xr.Dataset,
+    variables: abc.Sequence[str],
+    bins: abc.Sequence[bh.axis.Axis],
+    bins_names: abc.Sequence[str],
 ) -> xr.DataArray:
     """Compute histogram for dask data."""
     data, weight = separate_ravel(ds, variables)
@@ -175,10 +170,10 @@ def comp_hist_dask(
 
 
 def comp_hist_numpy(
-        ds: xr.Dataset,
-        variables: Sequence[str],
-        bins: Sequence[bh.axis.Axis],
-        bins_names: Sequence[str]
+    ds: xr.Dataset,
+    variables: abc.Sequence[str],
+    bins: abc.Sequence[bh.axis.Axis],
+    bins_names: abc.Sequence[str],
 ) -> xr.DataArray:
     """Compute histogram for numpy data."""
     hist = bh.Histogram(*bins)
@@ -187,16 +182,7 @@ def comp_hist_numpy(
     return post_comp(hist.values(), bins_names)
 
 
-def to_list(a: Union[Any, Sequence]) -> Sequence:
-    """Put argument as list of not already a Sequence."""
-    if a is None:
-        return []
-    if not isinstance(a, Sequence):
-        return [a]
-    return a
-
-
-def data_sanity_check(data: Sequence[xr.DataArray]):
+def data_sanity_check(data: abc.Sequence[xr.DataArray]):
     """Ensure data is correctly formated.
 
     Raises
@@ -241,9 +227,8 @@ def silent_minmax_warning():
 
 
 def manage_bins_input(
-        bins: Sequence[AxisSpec],
-        data: Sequence[xr.DataArray]
-) -> Sequence[bh.axis.Axis]:
+    bins: abc.Sequence[AxisSpec], data: abc.Sequence[xr.DataArray]
+) -> abc.Sequence[bh.axis.Axis]:
     """Check bins input and convert to boost objects.
 
     Raises
@@ -254,7 +239,7 @@ def manage_bins_input(
         raise ValueError(f"Not as much bins specifications ({len(bins)}) "
                          f"as data arrays ({len(data)}) were supplied")
     bins_out = []
-    for spec, a in zip(bins, data):
+    for spec, a in zip(bins, data):  # noqa: B905
         if isinstance(spec, bh.axis.Axis):
             bins_out.append(spec)
             continue
