@@ -193,10 +193,8 @@ def comp_hist_numpy(
     variables: abc.Sequence[abc.Hashable],
     bins: abc.Sequence[bh.axis.Axis],
     bins_names: abc.Sequence[abc.Hashable],
-    dims_aggr: set[abc.Hashable],
 ) -> xr.DataArray:
     """Compute histogram for numpy data."""
-    assert len(dims_aggr) == 0, "Numpy data should not have chunked dimensions."
     hist = bh.Histogram(*bins)
     data, weight = separate_ravel(ds, variables)
     hist.fill(*data, weight=weight)
