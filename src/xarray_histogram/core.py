@@ -123,14 +123,12 @@ def histogram(
 
     if len(dims_loop) == 0:
         # on flattened array
-        hist = comp_hist_func(ds, variables, bins, bins_names, dims_aggr)
+        hist = comp_hist_func(ds, variables, bins, bins_names)
     else:
         stacked = ds.stack(__stack_loop=dims_loop)
 
         hist = stacked.groupby(LOOP_DIM, squeeze=False).map(
-            comp_hist_func,
-            shortcut=True,
-            args=[variables, bins, bins_names, dims_aggr],
+            comp_hist_func, shortcut=True, args=[variables, bins, bins_names]
         )
         hist = hist.unstack()
 
@@ -182,69 +180,12 @@ def comp_hist_dask(
     variables: abc.Sequence[abc.Hashable],
     bins: abc.Sequence[bh.axis.Axis],
     bins_names: abc.Sequence[abc.Hashable],
-    dims_aggr: set[abc.Hashable],
-) -> xr.DataArray:
-    """Compute histogram for dask data."""
-    if len(dims_aggr) == 0:
-        return comp_hist_dask_aggregate(ds, variables, bins, bins_names)
-
-    data = [ds[v].data for v in variables]
-    has_weights = VAR_WEIGHT in ds
-    if has_weights:
-        data.append(ds[VAR_WEIGHT].data)
-
-    dims = ds[variables[0]].dims
-    in_axes = tuple(range(len(dims)))
-    new_axes = {len(dims) + i: b.size for i, b in enumerate(bins)}
-    out_index = in_axes + tuple(new_axes)
-
-    def histogram_block(*args, bins, has_weights: bool, **kwargs):
-        data = [d.ravel() for d in args]
-        if has_weights:
-            weights = data.pop(-1)
-        else:
-            weights = None
-
-        hist = bh.Histogram(*bins)
-        hist.fill(*data, weight=weights)
-        return np.expand_dims(hist.values(), in_axes)
-
-    hist = da.blockwise(
-        histogram_block,
-        out_index,
-        *data,
-        in_axes,
-        new_axes=new_axes,
-        name="histogram_block",
-        dtype=data[0].dtype,
-        # kwargs to func
-        bins=bins,
-        has_weights=has_weights,
-    )
-    hist = hist.sum([i for i, d in enumerate(dims) if d != LOOP_DIM])
-
-    new_dims = list(bins_names)
-    if LOOP_DIM in dims:
-        new_dims.insert(0, LOOP_DIM)
-
-    out = xr.DataArray(hist, dims=new_dims)
-
-    if LOOP_DIM in dims:
-        out = out.assign_coords({LOOP_DIM: ds[LOOP_DIM]})
-    return out
-
-
-def comp_hist_dask_aggregate(
-    ds: xr.Dataset,
-    variables: abc.Sequence[abc.Hashable],
-    bins: abc.Sequence[bh.axis.Axis],
-    bins_names: abc.Sequence[abc.Hashable],
 ) -> xr.DataArray:
     """Compute histogram for dask data."""
     data, weight = separate_ravel(ds, variables)
-    hist = dh.factory(*data, axes=bins, weights=weight)  # type: ignore
-    res = hist.to_dask_array()
-    return xr.DataArray(res[0], dims=bins_names)
+    hist = dh.partitioned_factory(*data, axes=bins, weights=weight)  # type: ignore
+    values, *_ = hist.collapse().to_dask_array()
+    return xr.DataArray(values, dims=bins_names)
 
 
 def comp_hist_numpy(
