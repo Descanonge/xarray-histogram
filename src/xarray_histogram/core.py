@@ -16,6 +16,7 @@ import xarray as xr
 from xarray.core.utils import is_dask_collection
 
 try:
+    import dask.array as da
     import dask_histogram as dh
     from dask.array.core import Array as DaskArray
 
@@ -25,6 +26,8 @@ except ImportError:
 
 
 VAR_WEIGHT = "_weight"
+# LOOP_DIM = "__loop_var"
+LOOP_DIM = "time"
 
 AxisSpec = bh.axis.Axis | int | abc.Sequence[int | float]
 
@@ -77,48 +80,60 @@ def histogram(
         histograms the names are separated by underscores). The bins coordinates are
         named ``<variable name>_bins``.
     """
-    in_data = list(data)
-    data_sanity_check(in_data)
-    variables = [a.name for a in in_data]
+    data_sanity_check(data)
+    variables = [a.name for a in data]
 
-    bins = manage_bins_input(bins, in_data)
+    bins = manage_bins_input(bins, data)
     bins_names = [f"{v}_bins" for v in variables]
 
     if weight is not None:
         weight = weight.rename(VAR_WEIGHT)
-        in_data.append(weight)
+        data = data + (weight,)
 
-    in_data = list(xr.broadcast(*in_data))
+    data = xr.broadcast(*data)
 
-    if not is_all_dask(in_data):
+    all_dask = is_all_dask(data)
+    if not all_dask:
         comp_hist_func = comp_hist_numpy
-        for a in in_data:
+        for a in data:
             a.compute()
     else:
         comp_hist_func = comp_hist_dask
+        data = xr.unify_chunks(*data)  # type: ignore[assignment]
 
     # Merge everything together so it can be sent through a single
     # groupby call.
-    ds = xr.merge(in_data, join="exact")
+    ds = xr.merge(data, join="exact")
+
     data_dims = ds.dims
 
     if dims is None:
         dims = data_dims
 
-    if set(dims) == set(data_dims):
-        # on flattened array
-        hist = comp_hist_func(ds, variables, bins, bins_names)
-    else:
-        # stack dimensions that we don't flatten
-        stacked_dim = [d for d in data_dims if d not in dims]
-        ds_stacked = ds.stack(stacked_dim=stacked_dim)
+    # dimensions that we loop over
+    dims_loop = set(data_dims) - set(dims)
 
-        hist = ds_stacked.groupby("stacked_dim", squeeze=False).map(
-            comp_hist_func, shortcut=True, args=[variables, bins, bins_names]
+    # dimensions that are chunked. We need to manually aggregate them
+    dims_aggr: set[abc.Hashable] = set()
+    for var in variables:
+        for dim, sizes in ds[var].chunksizes.items():
+            if any(s != ds.sizes[dim] for s in sizes):
+                dims_aggr.add(dim)
+    dims_aggr -= dims_loop
+
+    if len(dims_loop) == 0:
+        # on flattened array
+        hist = comp_hist_func(ds, variables, bins, bins_names, dims_aggr)
+    else:
+        stacked = ds.stack(__stack_loop=dims_loop)
+
+        hist = stacked.groupby(LOOP_DIM, squeeze=False).map(
+            comp_hist_func,
+            shortcut=True,
+            args=[variables, bins, bins_names, dims_aggr],
         )
         hist = hist.unstack()
 
-    hist = hist.rename("_".join(map(str, variables + ["histogram"])))
     for name, b in zip(bins_names, bins, strict=True):
         hist = hist.assign_coords({name: b.edges[:-1]})
         hist[name].attrs["right_edge"] = b.edges[-1]
@@ -138,6 +153,7 @@ def histogram(
         area_xr = xr.DataArray(area, dims=bins_names)
         hist = hist / area_xr / hist.sum(bins_names)
 
+    hist = hist.rename("_".join(map(str, variables + ["histogram"])))
     return hist
 
 
@@ -166,12 +182,68 @@ def comp_hist_dask(
     variables: abc.Sequence[abc.Hashable],
     bins: abc.Sequence[bh.axis.Axis],
     bins_names: abc.Sequence[abc.Hashable],
+    dims_aggr: set[abc.Hashable],
+) -> xr.DataArray:
+    """Compute histogram for dask data."""
+    if len(dims_aggr) == 0:
+        return comp_hist_dask_aggregate(ds, variables, bins, bins_names)
+
+    data = [ds[v].data for v in variables]
+    has_weights = VAR_WEIGHT in ds
+    if has_weights:
+        data.append(ds[VAR_WEIGHT].data)
+
+    dims = ds[variables[0]].dims
+    in_axes = tuple(range(len(dims)))
+    new_axes = {len(dims) + i: b.size for i, b in enumerate(bins)}
+    out_index = in_axes + tuple(new_axes)
+
+    def histogram_block(*args, bins, has_weights: bool, **kwargs):
+        data = [d.ravel() for d in args]
+        if has_weights:
+            weights = data.pop(-1)
+        else:
+            weights = None
+
+        hist = bh.Histogram(*bins)
+        hist.fill(*data, weight=weights)
+        return np.expand_dims(hist.values(), in_axes)
+
+    hist = da.blockwise(
+        histogram_block,
+        out_index,
+        *data,
+        in_axes,
+        new_axes=new_axes,
+        name="histogram_block",
+        dtype=data[0].dtype,
+        # kwargs to func
+        bins=bins,
+        has_weights=has_weights,
+    )
+    hist = hist.sum([i for i, d in enumerate(dims) if d != LOOP_DIM])
+
+    new_dims = list(bins_names)
+    if LOOP_DIM in dims:
+        new_dims.insert(0, LOOP_DIM)
+
+    out = xr.DataArray(hist, dims=new_dims)
+
+    if LOOP_DIM in dims:
+        out = out.assign_coords({LOOP_DIM: ds[LOOP_DIM]})
+    return out
+
+
+def comp_hist_dask_aggregate(
+    ds: xr.Dataset,
+    variables: abc.Sequence[abc.Hashable],
+    bins: abc.Sequence[bh.axis.Axis],
+    bins_names: abc.Sequence[abc.Hashable],
 ) -> xr.DataArray:
     """Compute histogram for dask data."""
     data, weight = separate_ravel(ds, variables)
     hist = dh.factory(*data, axes=bins, weights=weight)  # type: ignore
     res = hist.to_dask_array()
-
     return xr.DataArray(res[0], dims=bins_names)
 
 
@@ -180,8 +252,10 @@ def comp_hist_numpy(
     variables: abc.Sequence[abc.Hashable],
     bins: abc.Sequence[bh.axis.Axis],
     bins_names: abc.Sequence[abc.Hashable],
+    dims_aggr: set[abc.Hashable],
 ) -> xr.DataArray:
     """Compute histogram for numpy data."""
+    assert len(dims_aggr) == 0, "Numpy data should not have chunked dimensions."
     hist = bh.Histogram(*bins)
     data, weight = separate_ravel(ds, variables)
     hist.fill(*data, weight=weight)
