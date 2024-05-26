@@ -123,12 +123,12 @@ def histogram(
 
     if len(dims_loop) == 0:
         # on flattened array
-        hist = comp_hist_func(ds, variables, bins, bins_names)
+        hist = comp_hist_func(ds, variables, bins, bins_names, **kwargs)
     else:
         stacked = ds.stack(__stack_loop=dims_loop)
 
         hist = stacked.groupby(LOOP_DIM, squeeze=False).map(
-            comp_hist_func, shortcut=True, args=[variables, bins, bins_names]
+            comp_hist_func, shortcut=True, args=[variables, bins, bins_names], **kwargs
         )
         hist = hist.unstack()
 
@@ -180,10 +180,11 @@ def comp_hist_dask(
     variables: abc.Sequence[abc.Hashable],
     bins: abc.Sequence[bh.axis.Axis],
     bins_names: abc.Sequence[abc.Hashable],
+    **kwargs,
 ) -> xr.DataArray:
     """Compute histogram for dask data."""
     data, weight = separate_ravel(ds, variables)
-    hist = dh.partitioned_factory(*data, axes=bins, weights=weight)  # type: ignore
+    hist = dh.partitioned_factory(*data, axes=bins, weights=weight, **kwargs)  # type: ignore
     values, *_ = hist.collapse().to_dask_array()
     return xr.DataArray(values, dims=bins_names)
 
@@ -193,9 +194,10 @@ def comp_hist_numpy(
     variables: abc.Sequence[abc.Hashable],
     bins: abc.Sequence[bh.axis.Axis],
     bins_names: abc.Sequence[abc.Hashable],
+    **kwargs,
 ) -> xr.DataArray:
     """Compute histogram for numpy data."""
-    hist = bh.Histogram(*bins)
+    hist = bh.Histogram(*bins, **kwargs)
     data, weight = separate_ravel(ds, variables)
     hist.fill(*data, weight=weight)
     return xr.DataArray(hist.values(), dims=bins_names)
