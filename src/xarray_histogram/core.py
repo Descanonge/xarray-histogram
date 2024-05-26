@@ -16,7 +16,6 @@ import xarray as xr
 from xarray.core.utils import is_dask_collection
 
 try:
-    import dask.array as da
     import dask_histogram as dh
     from dask.array.core import Array as DaskArray
 
@@ -26,8 +25,7 @@ except ImportError:
 
 
 VAR_WEIGHT = "_weight"
-# LOOP_DIM = "__loop_var"
-LOOP_DIM = "time"
+LOOP_DIM = "__loop_var"
 
 AxisSpec = bh.axis.Axis | int | abc.Sequence[int | float]
 
@@ -42,16 +40,18 @@ def histogram(
     dims: abc.Collection[abc.Hashable] | None = None,
     weight: xr.DataArray | None = None,
     density: bool = False,
+    **kwargs,
 ) -> xr.DataArray:
     """Compute histogram.
 
     Parameters
     ----------
     data
-        The `xarray.DataArray` to compute the histogram from. To compute a
-        multi-dimensional histogram supply a sequence of as many arrays
-        as the histogram dimensionality. All arrays must have the same
-        dimensions.
+        The arrays to compute the histogram from. To compute a multi-dimensional
+        histogram supply a sequence of as many arrays as the histogram dimensionality.
+        Arrays must be broadcastable against each other. If any underlying data is a
+        dask array, other inputs will be transformed into a dask array of a single
+        chunk.
     bins
         Sequence of specifications for the histogram bins, in the same order as the
         variables of `data`.
@@ -67,11 +67,13 @@ def histogram(
         Dimensions to compute the histogram along to. If left to None the
         data is flattened along all axis.
     weight
-        Array of the weights to apply for each data-point. It will be broadcasted
-        against the data arrays.
+        Array of the weights to apply for each data-point.
     density
         If true normalize the histogram so that its integral is one.
         Does not take into account `weight`. Default is false.
+    kwargs
+        Passed to :func:`bh.Histogram` initialization or :func:`dh.partitioned_factory`
+        (for dask input).
 
     Returns
     -------
@@ -92,14 +94,12 @@ def histogram(
 
     data = xr.broadcast(*data)
 
-    all_dask = is_all_dask(data)
-    if not all_dask:
-        comp_hist_func = comp_hist_numpy
-        for a in data:
-            a.compute()
-    else:
+    if is_any_dask(data):
         comp_hist_func = comp_hist_dask
+        data = tuple(a.chunk({}) for a in data)
         data = xr.unify_chunks(*data)  # type: ignore[assignment]
+    else:
+        comp_hist_func = comp_hist_numpy
 
     # Merge everything together so it can be sent through a single
     # groupby call.
@@ -307,10 +307,10 @@ def manage_bins_input(
     return bins_out
 
 
-def is_all_dask(data: abc.Sequence[xr.DataArray]) -> bool:
-    """Check if all the variables are in dask format.
+def is_any_dask(data: abc.Sequence[xr.DataArray]) -> bool:
+    """Check if any the variables are in dask format.
 
     Only return true if Dask and Dask-histogram are imported.
     """
-    all_dask = HAS_DASK and all(is_dask_collection(a.data) for a in data)
-    return all_dask
+    any_dask = HAS_DASK and any(is_dask_collection(a.data) for a in data)
+    return any_dask
