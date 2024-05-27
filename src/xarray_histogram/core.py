@@ -25,8 +25,10 @@ except ImportError:
 
 
 VAR_WEIGHT = "_weight"
+LOOP_DIM = "__loop_var"
 
 AxisSpec = bh.axis.Axis | int | abc.Sequence[int | float]
+"""Accepted input types for bins specification."""
 
 
 class BinsMinMaxWarning(UserWarning):
@@ -39,16 +41,19 @@ def histogram(
     dims: abc.Collection[abc.Hashable] | None = None,
     weight: xr.DataArray | None = None,
     density: bool = False,
+    # flatten_kwargs ?
+    **kwargs,
 ) -> xr.DataArray:
     """Compute histogram.
 
     Parameters
     ----------
     data
-        The `xarray.DataArray` to compute the histogram from. To compute a
-        multi-dimensional histogram supply a sequence of as many arrays
-        as the histogram dimensionality. All arrays must have the same
-        dimensions.
+        The arrays to compute the histogram from. To compute a multi-dimensional
+        histogram supply a sequence of as many arrays as the histogram dimensionality.
+        Arrays must be broadcastable against each other. If any underlying data is a
+        dask array, other inputs will be transformed into a dask array of a single
+        chunk.
     bins
         Sequence of specifications for the histogram bins, in the same order as the
         variables of `data`.
@@ -64,11 +69,13 @@ def histogram(
         Dimensions to compute the histogram along to. If left to None the
         data is flattened along all axis.
     weight
-        Array of the weights to apply for each data-point. It will be broadcasted
-        against the data arrays.
+        Array of the weights to apply for each data-point.
     density
         If true normalize the histogram so that its integral is one.
         Does not take into account `weight`. Default is false.
+    kwargs
+        Passed to :func:`bh.Histogram` initialization or :func:`dh.partitioned_factory`
+        (for dask input).
 
     Returns
     -------
@@ -77,48 +84,56 @@ def histogram(
         histograms the names are separated by underscores). The bins coordinates are
         named ``<variable name>_bins``.
     """
-    in_data = list(data)
-    data_sanity_check(in_data)
-    variables = [a.name for a in in_data]
+    data_sanity_check(data)
+    variables = [a.name for a in data]
 
-    bins = manage_bins_input(bins, in_data)
+    bins = manage_bins_input(bins, data)
     bins_names = [f"{v}_bins" for v in variables]
 
     if weight is not None:
         weight = weight.rename(VAR_WEIGHT)
-        in_data.append(weight)
+        data = data + (weight,)
 
-    in_data = list(xr.broadcast(*in_data))
+    data = xr.broadcast(*data)
 
-    if not is_all_dask(in_data):
-        comp_hist_func = comp_hist_numpy
-        for a in in_data:
-            a.compute()
-    else:
+    if is_any_dask(data):
         comp_hist_func = comp_hist_dask
+        data = tuple(a.chunk({}) for a in data)
+        data = xr.unify_chunks(*data)  # type: ignore[assignment]
+    else:
+        comp_hist_func = comp_hist_numpy
 
     # Merge everything together so it can be sent through a single
     # groupby call.
-    ds = xr.merge(in_data, join="exact")
+    ds = xr.merge(data, join="exact")
+
     data_dims = ds.dims
 
     if dims is None:
         dims = data_dims
 
-    if set(dims) == set(data_dims):
-        # on flattened array
-        hist = comp_hist_func(ds, variables, bins, bins_names)
-    else:
-        # stack dimensions that we don't flatten
-        stacked_dim = [d for d in data_dims if d not in dims]
-        ds_stacked = ds.stack(stacked_dim=stacked_dim)
+    # dimensions that we loop over
+    dims_loop = set(data_dims) - set(dims)
 
-        hist = ds_stacked.groupby("stacked_dim", squeeze=False).map(
-            comp_hist_func, shortcut=True, args=[variables, bins, bins_names]
+    # dimensions that are chunked. We need to manually aggregate them
+    dims_aggr: set[abc.Hashable] = set()
+    for var in variables:
+        for dim, sizes in ds[var].chunksizes.items():
+            if any(s != ds.sizes[dim] for s in sizes):
+                dims_aggr.add(dim)
+    dims_aggr -= dims_loop
+
+    if len(dims_loop) == 0:
+        # on flattened array
+        hist = comp_hist_func(ds, variables, bins, bins_names, **kwargs)
+    else:
+        stacked = ds.stack({LOOP_DIM: dims_loop})
+
+        hist = stacked.groupby(LOOP_DIM, squeeze=False).map(
+            comp_hist_func, shortcut=True, args=[variables, bins, bins_names], **kwargs
         )
         hist = hist.unstack()
 
-    hist = hist.rename("_".join(map(str, variables + ["histogram"])))
     for name, b in zip(bins_names, bins, strict=True):
         hist = hist.assign_coords({name: b.edges[:-1]})
         hist[name].attrs["right_edge"] = b.edges[-1]
@@ -138,6 +153,7 @@ def histogram(
         area_xr = xr.DataArray(area, dims=bins_names)
         hist = hist / area_xr / hist.sum(bins_names)
 
+    hist = hist.rename("_".join(map(str, variables + ["histogram"])))
     return hist
 
 
@@ -166,13 +182,13 @@ def comp_hist_dask(
     variables: abc.Sequence[abc.Hashable],
     bins: abc.Sequence[bh.axis.Axis],
     bins_names: abc.Sequence[abc.Hashable],
+    **kwargs,
 ) -> xr.DataArray:
     """Compute histogram for dask data."""
     data, weight = separate_ravel(ds, variables)
-    hist = dh.factory(*data, axes=bins, weights=weight)  # type: ignore
-    res = hist.to_dask_array()
-
-    return xr.DataArray(res[0], dims=bins_names)
+    hist = dh.partitioned_factory(*data, axes=bins, weights=weight, **kwargs)  # type: ignore
+    values, *_ = hist.collapse().to_dask_array()
+    return xr.DataArray(values, dims=bins_names)
 
 
 def comp_hist_numpy(
@@ -180,9 +196,10 @@ def comp_hist_numpy(
     variables: abc.Sequence[abc.Hashable],
     bins: abc.Sequence[bh.axis.Axis],
     bins_names: abc.Sequence[abc.Hashable],
+    **kwargs,
 ) -> xr.DataArray:
     """Compute histogram for numpy data."""
-    hist = bh.Histogram(*bins)
+    hist = bh.Histogram(*bins, **kwargs)
     data, weight = separate_ravel(ds, variables)
     hist.fill(*data, weight=weight)
     return xr.DataArray(hist.values(), dims=bins_names)
@@ -294,10 +311,10 @@ def manage_bins_input(
     return bins_out
 
 
-def is_all_dask(data: abc.Sequence[xr.DataArray]) -> bool:
-    """Check if all the variables are in dask format.
+def is_any_dask(data: abc.Sequence[xr.DataArray]) -> bool:
+    """Check if any the variables are in dask format.
 
     Only return true if Dask and Dask-histogram are imported.
     """
-    all_dask = HAS_DASK and all(is_dask_collection(a.data) for a in data)
-    return all_dask
+    any_dask = HAS_DASK and any(is_dask_collection(a.data) for a in data)
+    return any_dask

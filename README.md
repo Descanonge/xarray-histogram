@@ -18,21 +18,21 @@ hist = xh.histogram(data, bins=[(100, 0., 10.)])
 ```
 but also using boost [axes](https://boost-histogram.readthedocs.io/en/latest/user-guide/axes.html), benefiting from their features:
 ``` python
-import boost_histogram as bh
-hist = xh.histogram(data, bins=[bh.axis.Regular(100, 0., 10.)])
+import boost_histogram.axis as bha
+hist = xh.histogram(data, bins=[bha.Regular(100, 0., 10.)])
 ```
 
 Multi-dimensional histogram can be computed, here in 2D for instance:
 ``` python
 hist = xh.histogram(
-    temp, sal,
-    bins=[bh.axis.Regular(100, -5., 40.), bh.axis.Regular(100, 31, 38))
+    temp, chlorophyll,
+    bins=[bha.Regular(100, -5., 40.), bha.Regular(100, 1e-3, 10, transform=bha.transform.log))
 )
 ```
 
 Finally, so far we have computed histograms on the whole flattened arrays, but we can compute only along some dimensions. For instance we can retrieve the time evolution of an histogram:
 ``` python
-hist = xh.histogram(temp, bins=[bh.axis.Regular(100, 0., 10.)], dims=['lat', 'lon'])
+hist = xh.histogram(temp, bins=[bha.Regular(100, 0., 10.)], dims=['lat', 'lon'])
 ```
 
 Histograms can be normalized, and weights can be applied.
