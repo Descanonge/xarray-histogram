@@ -28,6 +28,7 @@ VAR_WEIGHT = "_weight"
 LOOP_DIM = "__loop_var"
 
 AxisSpec = bh.axis.Axis | int | abc.Sequence[int | float]
+"""Accepted input types for bins specification."""
 
 
 class BinsMinMaxWarning(UserWarning):
@@ -40,6 +41,7 @@ def histogram(
     dims: abc.Collection[abc.Hashable] | None = None,
     weight: xr.DataArray | None = None,
     density: bool = False,
+    # flatten_kwargs ?
     **kwargs,
 ) -> xr.DataArray:
     """Compute histogram.
@@ -125,7 +127,7 @@ def histogram(
         # on flattened array
         hist = comp_hist_func(ds, variables, bins, bins_names, **kwargs)
     else:
-        stacked = ds.stack(__stack_loop=dims_loop)
+        stacked = ds.stack({LOOP_DIM: dims_loop})
 
         hist = stacked.groupby(LOOP_DIM, squeeze=False).map(
             comp_hist_func, shortcut=True, args=[variables, bins, bins_names], **kwargs
