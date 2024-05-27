@@ -7,11 +7,11 @@ This package allow to compute histograms from XArray data, taking advantage of
 its label and dimensions management.
 It relies on the [Boost Histogram](https://boost-histogram.readthedocs.io) library for the computations.
 
-It is essentially a thin wrapper using directly [Boost Histogram](https://boost-histogram.readthedocs.io) on loaded data, or [Dask-histogram](https://dask-histogram.readthedocs.io) on data contained in dask arrays. It thus features optimized performance, as well as lazy computation and easy up-scaling thanks to dask.
+It is essentially a thin wrapper using directly [Boost Histogram](https://boost-histogram.readthedocs.io) on loaded data, or [Dask-histogram](https://dask-histogram.readthedocs.io) on data contained in Dask arrays. It thus features optimized performance, as well as lazy computation and easy up-scaling thanks to Dask.
 
 ## Quick examples
 
-Bins can be specified similarly to numpy functions:
+Bins can be specified similarly to Numpy functions:
 ``` python
 import xarray_histogram as xh
 hist = xh.histogram(data, bins=[(100, 0., 10.)])
@@ -44,20 +44,28 @@ All of this works seamlessly with data stored in numpy or dask arrays.
 - numpy
 - xarray
 - [boost-histogram](https://github.com/scikit-hep/boost-histogram)
-- [dask](https://www.dask.org/) and [dask-histogram](https://github.com/dask-contrib/dask-histogram): Optional, if not available all data will be eagerly loaded.
+- [dask](https://www.dask.org/) and [dask-histogram](https://github.com/dask-contrib/dask-histogram) (optional)
 
 ## Documentation
 
-Documentation and installation steps will be available on readthedocs.
+Documentation available at [https://xarray-histogram.readthedocs.io](https://xarray-histogram.readthedocs.io)
 
-For now install from source using `pip install -e .`.
+## Installation
+
+Soon from PyPI ... 🚧
+
+From source:
+``` shell
+git clone https://github.com/Descanonge/xarray-histogram
+cd xarray-histogram
+pypi install -e .
+```
 
 ## Tests and performance
 
-Tests are on the way.
 To compare performances check these notebooks for [numpy](./docs/source/perf_numpy.ipynb) and [dask](./docs/source/perf_dask.ipynb) arrays.
 
 ## Other packages
 
-[xhistogram](https://xhistogram.readthedocs.io/en/latest/) already exists. It relies on numpy functions and thus does not benefit of some performance upgrades brought by Boost (see performance comparisons).
-I also hoped to bring similar features with simpler code, relying on dependencies. Some additional features of boost (overflow bins, rebinning) can easily be added (this is in the works).
+[xhistogram](https://xhistogram.readthedocs.io/en/latest/) already exists. It relies on Numpy functions and thus does not benefit of some performance upgrades brought by Boost (see performance comparisons).
+I also hoped to bring similar features with simpler code, relying on dependencies. Some additional features of boost (overflow bins, rebinning, extracting various statistics from the DataArray histogram) could be added (this is in the works).

@@ -74,7 +74,7 @@ def histogram(
         If true normalize the histogram so that its integral is one.
         Does not take into account `weight`. Default is false.
     kwargs
-        Passed to :func:`boost_histogram.Histogram` initialization or
+        Passed to :class:`boost_histogram.Histogram` initialization or
         :func:`dask_histogram.partitioned_factory` (for Dask input).
 
     Returns
