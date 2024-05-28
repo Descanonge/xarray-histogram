@@ -13,7 +13,12 @@ from collections import abc
 import boost_histogram as bh
 import numpy as np
 import xarray as xr
-from xarray.core.utils import is_dask_collection
+
+try:
+    # xarray >= 2024.02
+    from xarray.core.utils import is_dask_collection
+except ImportError:
+    from xarray.core.pycompat import is_dask_collection  # type: ignore[no-redef]
 
 try:
     import dask_histogram as dh
