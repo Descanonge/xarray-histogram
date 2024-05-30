@@ -158,7 +158,8 @@ def histogram(
         area_xr = xr.DataArray(area, dims=bins_names)
         hist = hist / area_xr / hist.sum(bins_names)
 
-    hist = hist.rename("_".join(map(str, variables + ["histogram"])))
+    hist_name = "pdf" if density else "histogram"
+    hist = hist.rename("_".join(map(str, variables + [hist_name])))
     return hist
 
 
