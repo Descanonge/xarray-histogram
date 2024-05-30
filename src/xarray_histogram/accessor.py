@@ -200,8 +200,8 @@ class HistDataArrayAccesor(HistAccessor):
     def scale(self, factor: float, variable: str | None = None) -> xr.DataArray:
         """Transform a bins coordinate by scaling it.
 
-        Parameter
-        ---------
+        Parameters
+        ----------
         factor
             Factor by which to scale the coordinate values.
         variable
@@ -215,8 +215,8 @@ class HistDataArrayAccesor(HistAccessor):
     ) -> xr.DataArray:
         """Apply a method of :class:`~scipy.stats.rv_histogram`.
 
-        Parameter
-        ---------
+        Parameters
+        ----------
         func
             Name of the :class:`scipy.stats.rv_histogram` method to apply.
         variable
@@ -254,8 +254,8 @@ class HistDataArrayAccesor(HistAccessor):
     def ppf(self, q: float, variable: str | None = None) -> xr.DataArray:
         """Return the percent point function at `q`.
 
-        Parameter
-        ---------
+        Parameters
+        ----------
         q
             Must be between 0 and 1.
         variable
@@ -269,8 +269,8 @@ class HistDataArrayAccesor(HistAccessor):
     def median(self, variable: str | None = None) -> xr.DataArray:
         """Return the median value of the distribution.
 
-        Parameter
-        ---------
+        Parameters
+        ----------
         variable
             Variable along which to apply this function. All `rv_histogram` functions
             apply to a 1D histogram, so we loop over all other dimensions.
@@ -280,8 +280,8 @@ class HistDataArrayAccesor(HistAccessor):
     def mean(self, variable: str | None = None) -> xr.DataArray:
         """Return the mean value of the distribution.
 
-        Parameter
-        ---------
+        Parameters
+        ----------
         variable
             Variable along which to apply this function. All `rv_histogram` functions
             apply to a 1D histogram, so we loop over all other dimensions.
@@ -291,8 +291,8 @@ class HistDataArrayAccesor(HistAccessor):
     def cdf(self, x: float, variable: str | None = None) -> xr.DataArray:
         """Return the cumulative distribution function at `x`.
 
-        Parameter
-        ---------
+        Parameters
+        ----------
         x
             Quantile, must be between 0 and 1.
         variable
@@ -304,8 +304,8 @@ class HistDataArrayAccesor(HistAccessor):
     def var(self, variable: str | None = None) -> xr.DataArray:
         """Return the variance of the distribution.
 
-        Parameter
-        ---------
+        Parameters
+        ----------
         variable
             Variable along which to apply this function. All `rv_histogram` functions
             apply to a 1D histogram, so we loop over all other dimensions.
@@ -315,8 +315,8 @@ class HistDataArrayAccesor(HistAccessor):
     def std(self, variable: str | None = None) -> xr.DataArray:
         """Return the standard deviation of the distribution.
 
-        Parameter
-        ---------
+        Parameters
+        ----------
         variable
             Variable along which to apply this function. All `rv_histogram` functions
             apply to a 1D histogram, so we loop over all other dimensions.
@@ -326,8 +326,8 @@ class HistDataArrayAccesor(HistAccessor):
     def moment(self, order: int, variable: str | None = None) -> xr.DataArray:
         """Return the nth moment of the distribution.
 
-        Parameter
-        ---------
+        Parameters
+        ----------
         order
             Order of moment, ``order>=1``.
         variable
@@ -342,8 +342,8 @@ class HistDataArrayAccesor(HistAccessor):
         The interval is computed as ``[ppf(p_tail); ppf(1-p_tail)]`` with
         ``p_tail = (1-confidence)/2``.
 
-        Parameter
-        ---------
+        Parameters
+        ----------
         confidence
             Probability that a value falls within the returned range. Must be between
             0 and 1.

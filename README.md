@@ -48,7 +48,7 @@ hist.hist.median()
 hist.hist.ppf(q=0.75)
 ```
 
-See the accessor API for more details.
+See the [accessor API](https://xarray-histogram.readthedocs.io/en/latest/_api/xarray_histogram.accessor.html) for more details.
 
 ## Requirements
 
