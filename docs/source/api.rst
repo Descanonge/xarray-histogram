@@ -21,4 +21,5 @@ Submodules
    :toctree: _api
    :nosignatures:
 
+   accessor
    core

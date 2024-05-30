@@ -1,7 +1,7 @@
 
 # XArray-Histogram
 
-> Compute histograms from XArray data using BoostHistogram
+> Compute and manipulate histograms from XArray data using BoostHistogram
 
 This package allow to compute histograms from XArray data, taking advantage of
 its label and dimensions management.
@@ -38,6 +38,18 @@ hist = xh.histogram(temp, bins=[bha.Regular(100, 0., 10.)], dims=['lat', 'lon'])
 Histograms can be normalized, and weights can be applied.
 All of this works seamlessly with data stored in numpy or dask arrays.
 
+## Accessor
+
+An Xarray [accessor](https://docs.xarray.dev/en/latest/internals/extending-xarray.html) can be made available to do certain manipulations on histogram data. Simply import `xarray_histogram.accessor`, all arrays can then access methods through the `hist` property::
+
+``` python
+hist.hist.edges()
+hist.hist.median()
+hist.hist.ppf(q=0.75)
+```
+
+See the accessor API for more details.
+
 ## Requirements
 
 - Python >= 3.11
@@ -45,6 +57,7 @@ All of this works seamlessly with data stored in numpy or dask arrays.
 - xarray
 - [boost-histogram](https://github.com/scikit-hep/boost-histogram)
 - [dask](https://www.dask.org/) and [dask-histogram](https://github.com/dask-contrib/dask-histogram) (optional)
+- scipy (optional)
 
 ## Installation
 

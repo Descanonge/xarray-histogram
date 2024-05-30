@@ -4,6 +4,7 @@
 # https://www.sphinx-doc.org/en/master/usage/configuration.html
 
 import xarray_histogram
+import xarray_histogram.accessor
 
 ## Project information
 
@@ -46,6 +47,8 @@ autosummary_generate = ["api.rst"]
 autodoc_typehints = "description"
 autodoc_typehints_format = "short"
 
+toc_object_entries_show_parents = "hide"
+
 # Intersphinx config
 intersphinx_mapping = {
     "python": ("https://docs.python.org/3/", None),
@@ -54,6 +57,7 @@ intersphinx_mapping = {
     "xarray": ("https://docs.xarray.dev/en/stable", None),
     "boost-histogram": ("https://boost-histogram.readthedocs.io/en/latest", None),
     "dask-histogram": ("https://dask-histogram.readthedocs.io/en/stable", None),
+    "scipy": ("https://docs.scipy.org/doc/scipy", None),
 }
 
 ## HTML Output

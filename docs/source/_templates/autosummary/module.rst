@@ -1,9 +1,9 @@
 
-{{ fullname | escape | underline}}
+{{ name | escape | underline}}
 
 .. automodule:: {{ fullname }}
    :members:
-   :member-order: groupwise
+   :member-order: bysource
 
    {% block attributes %}
    {% if attributes %}
