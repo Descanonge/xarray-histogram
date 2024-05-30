@@ -5,6 +5,7 @@ dependencies:
     - python = 3.11
 
     - numpy >= 1.26
+    - scipy
 
     - boost-histogram >= 1.4.1
     - dask-histogram >= 2024.3

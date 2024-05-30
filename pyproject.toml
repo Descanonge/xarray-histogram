@@ -36,6 +36,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     'dask',
+    'scipy',
     'sphinx==6.2.1',
     'sphinx-book-theme==1.0.1',
     'ruff',

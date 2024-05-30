@@ -3,6 +3,7 @@ sphinx==6.2.*
 sphinx-book-theme==1.0.*
 
 numpy>=1.26
+scipy>=1.13
 
 xarray>=2024.5
 dask>=2024.5
