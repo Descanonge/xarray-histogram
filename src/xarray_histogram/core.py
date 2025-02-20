@@ -228,13 +228,8 @@ def data_sanity_check(data: abc.Sequence[xr.DataArray]):
     for a in data:
         if not isinstance(a, xr.DataArray):
             raise TypeError(
-                "Data must be a xr.DataArray, "
-                f"a type {type(a).__name__} was supplied."
+                f"Data must be a xr.DataArray, a type {type(a).__name__} was supplied."
             )
-    dims0 = set(data[0].dims)
-    for a in data:
-        if set(a.dims) != dims0:
-            raise ValueError("Dimensions are different in supplied arrays.")
 
 
 def weight_sanity_check(
@@ -249,16 +244,11 @@ def weight_sanity_check(
     ValueError
         If the set of dimensions are not the same in weights as data.
     """
-    dims0 = set(data[0].dims)
     if not isinstance(weight, xr.DataArray):
         raise TypeError(
             "Weights must be a xr.DataArray, "
             f"a type {type(weight).__name__} was supplied."
         )
-    if set(weight.dims) != dims0:
-        raise ValueError("Dimensions are different in supplied weights.")
-    # We only check for correct set of dimensions. Weight will be aligned
-    # later with data anyway
 
 
 def silent_minmax_warning():
