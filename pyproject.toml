@@ -84,6 +84,8 @@ select = [
        'PL', #pylint
 ]
 
+unfixable = ["F401"]
+
 [tool.ruff.lint.pycodestyle]
 max-line-length = 90
 

@@ -11,8 +11,9 @@ import dask.array as da
 import numpy as np
 import pytest
 import xarray as xr
-import xarray_histogram as xh
 from numpy.testing import assert_allclose
+
+import xarray_histogram as xh
 
 
 class InternalError(Exception):
@@ -55,7 +56,7 @@ def test_1d_flat(kind, density, weight):
         weights = xr.DataArray(weights, dims=["x"], name="weights")
 
     bins = bh.axis.Regular(nbins, *ranges)
-    h = xh.histogram(data, bins=[bins], density=density, weight=weights)
+    h = xh.histogram(data, bins=[bins], density=density, weights=weights)
 
     # Check values
     assert_allclose(answer, h.values, rtol=1)
@@ -99,7 +100,7 @@ def test_nd_flat(dim, kind, density, weight):
         weights = xr.DataArray(weights, dims=["x"], name="weights")
 
     bins = [bh.axis.Regular(n, *r) for n, r in zip(nbins, ranges, strict=False)]
-    h = xh.histogram(*data, bins=bins, density=density, weight=weights)
+    h = xh.histogram(*data, bins=bins, density=density, weights=weights)
 
     # Check values
     assert_allclose(answer, h.values, rtol=1)
@@ -139,7 +140,7 @@ def test_1d_along(kind, density, weight):
 
     bins = bh.axis.Regular(nbins, *ranges)
     h = xh.histogram(
-        data, bins=[bins], density=density, weight=weights, dims=["x", "y"]
+        data, bins=[bins], density=density, weights=weights, dims=["x", "y"]
     )
 
     # Check values

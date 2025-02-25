@@ -15,21 +15,18 @@ import numpy as np
 import xarray as xr
 
 try:
-    # xarray >= 2024.02
-    from xarray.core.utils import is_dask_collection
-except ImportError:
-    from xarray.core.pycompat import is_dask_collection  # type: ignore[no-redef]
-
-try:
-    import dask_histogram as dh
-    from dask.array.core import Array as DaskArray
+    from dask.base import is_dask_collection, tokenize
+    from dask.blockwise import Blockwise, blockwise
+    from dask.highlevelgraph import HighLevelGraph
+    from dask_histogram.core import PartitionedHistogram, _dependencies
 
     HAS_DASK = True
 except ImportError:
     HAS_DASK = False
 
 
-VAR_WEIGHT = "_weight"
+VAR_WEIGHTS = "_weights"
+VAR_HIST = "__hist"
 LOOP_DIM = "__loop_var"
 
 AxisSpec = bh.axis.Axis | int | abc.Sequence[int | float]
@@ -44,9 +41,8 @@ def histogram(
     *data: xr.DataArray,
     bins: abc.Sequence[AxisSpec],
     dims: abc.Collection[abc.Hashable] | None = None,
-    weight: xr.DataArray | None = None,
+    weights: xr.DataArray | None = None,
     density: bool = False,
-    # flatten_kwargs ?
     **kwargs,
 ) -> xr.DataArray:
     """Compute histogram.
@@ -73,14 +69,13 @@ def histogram(
     dims
         Dimensions to compute the histogram along to. If left to None the
         data is flattened along all axis.
-    weight
+    weights
         Array of the weights to apply for each data-point.
     density
         If true normalize the histogram so that its integral is one.
         Does not take into account `weight`. Default is false.
     kwargs
-        Passed to :class:`boost_histogram.Histogram` initialization or
-        :func:`dask_histogram.partitioned_factory` (for Dask input).
+        Passed to :class:`boost_histogram.Histogram` initialization.
 
     Returns
     -------
@@ -92,59 +87,50 @@ def histogram(
     data_sanity_check(data)
     variables = [a.name for a in data]
 
-    bins = manage_bins_input(bins, data)
+    axes = manage_bins_input(bins, data)
     bins_names = [f"{v}_bins" for v in variables]
 
-    if weight is not None:
-        weight = weight.rename(VAR_WEIGHT)
-        data = data + (weight,)
+    if weights is not None:
+        weights = weights.rename(VAR_WEIGHTS)
+        data = data + (weights,)
 
     data = xr.broadcast(*data)
 
     if is_any_dask(data):
-        comp_hist_func = comp_hist_dask
+        histogram_func = histogram_dask
         data = tuple(a.chunk({}) for a in data)
         data = xr.unify_chunks(*data)  # type: ignore[assignment]
     else:
-        comp_hist_func = comp_hist_numpy
+        histogram_func = histogram_numpy
 
     # Merge everything together so it can be sent through a single
     # groupby call.
     ds = xr.merge(data, join="exact")
 
     data_dims = ds.dims
-
     if dims is None:
         dims = data_dims
-
     # dimensions that we loop over
     dims_loop = set(data_dims) - set(dims)
 
-    # dimensions that are chunked. We need to manually aggregate them
-    dims_aggr: set[abc.Hashable] = set()
-    for var in variables:
-        for dim, sizes in ds[var].chunksizes.items():
-            if any(s != ds.sizes[dim] for s in sizes):
-                dims_aggr.add(dim)
-    dims_aggr -= dims_loop
-
     if len(dims_loop) == 0:
         # on flattened array
-        hist = comp_hist_func(ds, variables, bins, bins_names, **kwargs)
+        hist = histogram_func(ds, variables, axes, bins_names, **kwargs)[VAR_HIST]
     else:
-        stacked = ds.stack({LOOP_DIM: dims_loop})
-
-        hist = stacked.groupby(LOOP_DIM, squeeze=False).map(
-            comp_hist_func, shortcut=True, args=[variables, bins, bins_names], **kwargs
+        hist_ds = ds.groupby({d: xr.groupers.UniqueGrouper() for d in dims_loop}).map(
+            histogram_func,
+            shortcut=True,
+            args=(variables, axes, bins_names),
+            **kwargs,
         )
-        hist = hist.unstack()
+        hist = hist_ds[VAR_HIST]
 
-    for name, b in zip(bins_names, bins, strict=True):
+    for name, b in zip(bins_names, axes, strict=True):
         hist = hist.assign_coords({name: b.edges[:-1]})
         hist[name].attrs["right_edge"] = b.edges[-1]
 
     if density:
-        widths = [np.diff(b.edges) for b in bins]
+        widths = [np.diff(b.edges) for b in axes]
         if len(widths) == 1:
             area = widths[0]
         elif len(widths) == 2:  # noqa: PLR2004
@@ -163,52 +149,99 @@ def histogram(
     return hist
 
 
-def separate_ravel(
-    ds: xr.Dataset, variables: abc.Sequence[abc.Hashable]
-) -> tuple[list[DaskArray] | list[np.ndarray], DaskArray | np.ndarray | None]:
-    """Separate data and weight arrays and flatten arrays.
+def _clone(histref: bh.Histogram) -> bh.Histogram:
+    return bh.Histogram(*histref.axes, storage=histref.storage_type())
 
-    Returns
-    -------
-    data
-        List of data arrays.
-    weight
-        Array of weights if present in dataset, None otherwise.
+
+def _blocked_dd(*data, histref: bh.Histogram) -> bh.Histogram:
+    """Multiple variables, ND arrays, unweighted.
+
+    Arrays are already broadcasted.
     """
-    data = [ds[v].data.ravel() for v in variables]
-    if VAR_WEIGHT in ds:
-        weight = ds[VAR_WEIGHT].data.ravel()
-    else:
-        weight = None
-    return data, weight
+    thehist = _clone(histref)
+    flattened = (np.reshape(x, (-1,)) for x in data)
+    return thehist.fill(*flattened)
 
 
-def comp_hist_dask(
+def _blocked_dd_w(*data, histref: bh.Histogram) -> bh.Histogram:
+    """Multiple variables, ND arrays, weighted.
+
+    Arrays are already broadcasted.
+    """
+    thehist = _clone(histref)
+    flattened = (np.reshape(x, (-1,)) for x in data)
+    *data_flat, weights_flat = flattened
+    return thehist.fill(*data_flat, weight=weights_flat)
+
+
+def _partitionwise(func, layer_name, *args, **kwargs) -> Blockwise:
+    pairs = []
+    numblocks = {}
+    for arg in args:
+        numblocks[arg._name] = arg.numblocks
+        pairs.extend([arg.name, "".join(chr(97 + i) for i in range(arg.ndim))])
+
+    return blockwise(
+        func,
+        layer_name,
+        "a",
+        *pairs,
+        numblocks=numblocks,
+        concatenate=True,
+        **kwargs,
+    )
+
+
+def histogram_dask(
     ds: xr.Dataset,
     variables: abc.Sequence[abc.Hashable],
-    bins: abc.Sequence[bh.axis.Axis],
+    axes: abc.Sequence[bh.axis.Axis],
     bins_names: abc.Sequence[abc.Hashable],
     **kwargs,
-) -> xr.DataArray:
+) -> xr.Dataset:
     """Compute histogram for dask data."""
-    data, weight = separate_ravel(ds, variables)
-    hist = dh.partitioned_factory(*data, axes=bins, weights=weight, **kwargs)  # type: ignore
+    histref = bh.Histogram(*axes, **kwargs)
+
+    data = [ds[v].data for v in variables]
+    if VAR_WEIGHTS in ds:
+        weights = ds[VAR_WEIGHTS].data
+    else:
+        weights = None
+
+    name = f"hist-on-block-{tokenize(data, histref, weights)}"
+    if weights is not None:
+        g = _partitionwise(_blocked_dd_w, name, *data, weights, histref=histref)
+    else:
+        g = _partitionwise(_blocked_dd, name, *data, histref=histref)
+
+    dependencies = _dependencies(*data, weights=weights)
+    hlg = HighLevelGraph.from_collections(name, g, dependencies=dependencies)  # type: ignore[arg-type]
+
+    npartitions = len(g.get_output_keys())
+    hist = PartitionedHistogram(hlg, name, npartitions, histref=histref)
+
     values, *_ = hist.collapse().to_dask_array()
-    return xr.DataArray(values, dims=bins_names)
+    return xr.DataArray(values, dims=bins_names, name=VAR_HIST).to_dataset()
 
 
-def comp_hist_numpy(
+def histogram_numpy(
     ds: xr.Dataset,
     variables: abc.Sequence[abc.Hashable],
-    bins: abc.Sequence[bh.axis.Axis],
+    axes: abc.Sequence[bh.axis.Axis],
     bins_names: abc.Sequence[abc.Hashable],
     **kwargs,
-) -> xr.DataArray:
+) -> xr.Dataset:
     """Compute histogram for numpy data."""
-    hist = bh.Histogram(*bins, **kwargs)
-    data, weight = separate_ravel(ds, variables)
-    hist.fill(*data, weight=weight)
-    return xr.DataArray(hist.values(), dims=bins_names)
+    histref = bh.Histogram(*axes, **kwargs)
+
+    data = [ds[v].data for v in variables]
+    if VAR_WEIGHTS in ds:
+        weights = ds[VAR_WEIGHTS].data
+        hist = _blocked_dd_w(*data, weights, histref=histref)
+    else:
+        hist = _blocked_dd(*data, histref=histref)
+
+    return xr.DataArray(hist.values(), dims=bins_names, name=VAR_HIST).to_dataset()
 
 
 def data_sanity_check(data: abc.Sequence[xr.DataArray]):
@@ -258,7 +291,7 @@ def silent_minmax_warning():
 
 def manage_bins_input(
     bins: abc.Sequence[AxisSpec], data: abc.Sequence[xr.DataArray]
-) -> abc.Sequence[bh.axis.Axis]:
+) -> tuple[bh.axis.Axis, ...]:
     """Check bins input and convert to boost objects.
 
     Raises
@@ -304,7 +337,7 @@ def manage_bins_input(
             start, stop = spec[1:]
         bins_out.append(bh.axis.Regular(nbins, start, stop))
 
-    return bins_out
+    return tuple(bins_out)
 
 
 def is_any_dask(data: abc.Sequence[xr.DataArray]) -> bool:
@@ -312,5 +345,4 @@ def is_any_dask(data: abc.Sequence[xr.DataArray]) -> bool:
 
     Only return true if Dask and Dask-histogram are imported.
     """
-    any_dask = HAS_DASK and any(is_dask_collection(a.data) for a in data)
-    return any_dask
+    return HAS_DASK and any(is_dask_collection(a.data) for a in data)
