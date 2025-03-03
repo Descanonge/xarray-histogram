@@ -7,42 +7,89 @@
 
 from __future__ import annotations
 
-import warnings
+import operator
 from collections import abc
+from copy import copy
+from functools import partial, reduce
 
 import boost_histogram as bh
 import numpy as np
 import xarray as xr
+from numpy.typing import NDArray
 
 try:
-    from dask.base import is_dask_collection, tokenize
-    from dask.blockwise import Blockwise, blockwise
-    from dask.highlevelgraph import HighLevelGraph
-    from dask_histogram.core import PartitionedHistogram, _dependencies
+    import dask.array as da
+    from dask.base import is_dask_collection
 
     HAS_DASK = True
 except ImportError:
     HAS_DASK = False
 
 
+# TODO Forbid growth when using dask
+
+_range = range
+
 VAR_WEIGHTS = "_weights"
 VAR_HIST = "__hist"
 LOOP_DIM = "__loop_var"
 
-AxisSpec = bh.axis.Axis | int | abc.Sequence[int | float]
-"""Accepted input types for bins specification."""
-
-
-class BinsMinMaxWarning(UserWarning):
-    """Warning if range of bins is not supplied and must be computed from data."""
+BinsType = bh.axis.Axis | int
+RangeType = tuple[float | None, float | None]
 
 
 def histogram(
-    *data: xr.DataArray,
-    bins: abc.Sequence[AxisSpec],
-    dims: abc.Collection[abc.Hashable] | None = None,
+    x: xr.DataArray,
+    /,
+    bins: BinsType = 10,
+    range: RangeType | None = None,
     weights: xr.DataArray | None = None,
     density: bool = False,
+    dims: abc.Collection[abc.Hashable] | None = None,
+    **kwargs,
+) -> xr.DataArray:
+    return histogramdd(
+        x,
+        bins=bins,
+        range=[range] if range is not None else None,
+        weights=weights,
+        density=density,
+        dims=dims,
+        **kwargs,
+    )
+
+
+def histogram2d(
+    x: xr.DataArray,
+    y: xr.DataArray,
+    /,
+    bins: BinsType | abc.Sequence[BinsType] = 10,
+    range: abc.Sequence[RangeType] | None = None,
+    weights: xr.DataArray | None = None,
+    density: bool = False,
+    dims: abc.Collection[abc.Hashable] | None = None,
+    **kwargs,
+) -> xr.DataArray:
+    return histogramdd(
+        x,
+        y,
+        bins=bins,
+        range=range,
+        weights=weights,
+        density=density,
+        dims=dims,
+        **kwargs,
+    )
+
+
+def histogramdd(
+    *data: xr.DataArray,
+    bins: abc.Sequence[BinsType] | BinsType = 10,
+    range: abc.Sequence[RangeType] | None = None,
+    weights: xr.DataArray | None = None,
+    density: bool = False,
+    dims: abc.Collection[abc.Hashable] | None = None,
+    storage: bh.storage.Storage | None = None,
     **kwargs,
 ) -> xr.DataArray:
     """Compute histogram.
