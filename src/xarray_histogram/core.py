@@ -145,34 +145,43 @@ def histogramdd(
 
     data = xr.broadcast(*data)
 
-    if is_any_dask(data):
-        histogram_func = histogram_dask
+    if is_dask := is_any_dask(data):
         data = tuple(a.chunk({}) for a in data)
         data = xr.unify_chunks(*data)  # type: ignore[assignment]
-    else:
-        histogram_func = histogram_numpy
 
-    # Merge everything together so it can be sent through a single
-    # groupby call.
-    ds = xr.merge(data, join="exact")
-
-    data_dims = ds.dims
+    data_dims = data[0].dims
     if dims is None:
         dims = data_dims
-    # dimensions that we loop over
-    dims_loop = set(data_dims) - set(dims)
+    # from collection to list in data order
+    dims = [d for d in data_dims if d in dims]
+    dims_loop = [d for d in data_dims if d not in dims]
 
-    if len(dims_loop) == 0:
-        # on flattened array
-        hist = histogram_func(ds, variables, axes, bins_names, **kwargs)[VAR_HIST]
-    else:
-        hist_ds = ds.groupby({d: xr.groupers.UniqueGrouper() for d in dims_loop}).map(
-            histogram_func,
-            shortcut=True,
-            args=(variables, axes, bins_names),
-            **kwargs,
+    histogram_func_kwargs = dict(weight=weights is not None, histref=histref)
+
+    # we vectorize our dask function using blockwise
+    if is_dask and len(dims_loop) > 0:
+        axis_loop = [data_dims.index(d) for d in dims_loop]
+        axis_agg = [data_dims.index(d) for d in dims]
+
+        g = _histogram_dask(
+            *[a.data for a in data],
+            axis_loop=axis_loop,
+            axis_agg=axis_agg,
+            weight=weights is not None,
+            histref=histref,
         )
-        hist = hist_ds[VAR_HIST]
+
+        hist = xr.DataArray(g, dims=dims_loop + bins_names, name=VAR_HIST)
+    else:
+        hist = xr.apply_ufunc(
+            _blocked_dd,
+            *data,
+            input_core_dims=[list(dims) for _ in data],
+            output_core_dims=[bins_names],
+            vectorize=True,
+            dask="allowed",
+            kwargs=histogram_func_kwargs,
+        ).rename(VAR_HIST)
 
     for name, b in zip(bins_names, axes, strict=True):
         hist = hist.assign_coords({name: b.edges[:-1]})
