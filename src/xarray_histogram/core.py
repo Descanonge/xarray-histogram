@@ -131,11 +131,13 @@ def histogramdd(
         histograms the names are separated by underscores). The bins coordinates are
         named ``<variable name>_bins``.
     """
-    data_sanity_check(data)
     variables = [a.name for a in data]
-
-    axes = manage_bins_input(bins, data)
     bins_names = [f"{v}_bins" for v in variables]
+    axes = get_axes_from_specs(bins, range, data)
+
+    if storage is None:
+        storage = bh.storage.Double()
+    histref = bh.Histogram(*axes, storage=storage)
 
     if weights is not None:
         weights = weights.rename(VAR_WEIGHTS)
@@ -178,18 +180,8 @@ def histogramdd(
 
     if density:
         widths = [np.diff(b.edges) for b in axes]
-        if len(widths) == 1:
-            area = widths[0]
-        elif len(widths) == 2:  # noqa: PLR2004
-            area = np.outer(*widths)
-        else:
-            # https://stackoverflow.com/a/43149109
-            # I added dtype=object to silence a warning for ragged arrays
-            # not sure how safe this is.
-            area = np.prod(np.array(np.ix_(*widths), dtype=object))
-
-        area_xr = xr.DataArray(area, dims=bins_names)
-        hist = hist / area_xr / hist.sum(bins_names)
+        areas = xr.DataArray(reduce(operator.mul, widths), dims=bins_names)
+        hist = hist / areas / hist.sum(bins_names)
 
     hist_name = "pdf" if density else "histogram"
     hist = hist.rename("_".join(map(str, variables + [hist_name])))
@@ -200,144 +192,109 @@ def _clone(histref: bh.Histogram) -> bh.Histogram:
     return bh.Histogram(*histref.axes, storage=histref.storage_type())
 
 
-def _blocked_dd(*data, histref: bh.Histogram) -> bh.Histogram:
-    """Multiple variables, ND arrays, unweighted.
+def _blocked_dd(*data: NDArray, weight: bool, histref: bh.Histogram) -> NDArray:
+    """Multiple variables, ND arrays.
 
     Arrays are already broadcasted.
     """
     thehist = _clone(histref)
     flattened = (np.reshape(x, (-1,)) for x in data)
-    return thehist.fill(*flattened)
+
+    thehist = _clone(histref)
+    if weight:
+        *args, weights = flattened
+        thehist.fill(*args, weight=weights)
+    else:
+        thehist.fill(*flattened)
+
+    return thehist.values()
 
 
-def _blocked_dd_w(*data, histref: bh.Histogram) -> bh.Histogram:
-    """Multiple variables, ND arrays, weighted.
+def _blocked_dd_loop(
+    *data: NDArray,
+    axis_agg: abc.Sequence[int],
+    axis_loop: abc.Sequence[int],
+    weight: bool,
+    histref: bh.Histogram,
+) -> NDArray:
+    """Multiple variables, ND arrays.
 
     Arrays are already broadcasted.
     """
-    thehist = _clone(histref)
-    flattened = (np.reshape(x, (-1,)) for x in data)
-    *data_flat, weights_flat = flattened
-    return thehist.fill(*data_flat, weight=weights_flat)
+    # move aggregated axis at the end
+    ndim = data[0].ndim
+    ordered = [
+        np.moveaxis(a, axis_agg, tuple(_range(ndim - len(axis_agg), ndim)))
+        for a in data
+    ]
 
+    shape = data[0].shape
+    shape_agg = tuple(shape[i] for i in axis_agg)
+    n_agg = reduce(operator.mul, shape_agg)
+    shape_loop = tuple(shape[i] for i in axis_loop)
+    n_loop = reduce(operator.mul, shape_loop)
+    flattened = [np.reshape(a, (n_loop, n_agg)) for a in ordered]
 
-def _partitionwise(func, layer_name, *args, **kwargs) -> Blockwise:
-    pairs = []
-    numblocks = {}
-    for arg in args:
-        numblocks[arg._name] = arg.numblocks
-        pairs.extend([arg.name, "".join(chr(97 + i) for i in range(arg.ndim))])
+    values = np.zeros((n_loop, *histref.shape))
+    for i in range(n_loop):
+        thehist = _clone(histref)
+        if weight:
+            *args, weights = flattened
+            thehist.fill(*[a[i] for a in args], weight=weights[i])
+        else:
+            thehist.fill(*[a[i] for a in flattened])
 
-    return blockwise(
-        func,
-        layer_name,
-        "a",
-        *pairs,
-        numblocks=numblocks,
-        concatenate=True,
-        **kwargs,
+        # TODO: take care of flow
+        values[i] = thehist.values()
+
+    out = np.reshape(values, (*shape_loop, *histref.shape))
+    out = da.expand_dims(
+        out, tuple(_range(len(axis_loop), len(axis_loop) + len(axis_agg)))
     )
 
+    return out
 
-def histogram_dask(
-    ds: xr.Dataset,
-    variables: abc.Sequence[abc.Hashable],
-    axes: abc.Sequence[bh.axis.Axis],
-    bins_names: abc.Sequence[abc.Hashable],
-    **kwargs,
-) -> xr.Dataset:
+
+def _histogram_dask(
+    *data: da.Array,
+    axis_loop: abc.Sequence[int],
+    axis_agg: abc.Sequence[int],
+    weight: bool,
+    histref: bh.Histogram,
+) -> da.Array:
     """Compute histogram for dask data."""
-    histref = bh.Histogram(*axes, **kwargs)
-
-    data = [ds[v].data for v in variables]
-    if VAR_WEIGHTS in ds:
-        weights = ds[VAR_WEIGHTS].data
-    else:
-        weights = None
-
-    name = f"hist-on-block-{tokenize(data, histref, weights)}"
-    if weights is not None:
-        g = _partitionwise(_blocked_dd_w, name, *data, weights, histref=histref)
-    else:
-        g = _partitionwise(_blocked_dd, name, *data, histref=histref)
-
-    dependencies = _dependencies(*data, weights=weights)
-    hlg = HighLevelGraph.from_collections(name, g, dependencies=dependencies)  # type: ignore[arg-type]
-
-    npartitions = len(g.get_output_keys())
-    hist = PartitionedHistogram(hlg, name, npartitions, histref=histref)
-
-    values, *_ = hist.collapse().to_dask_array()
-    return xr.DataArray(values, dims=bins_names, name=VAR_HIST).to_dataset()
-
-
-def histogram_numpy(
-    ds: xr.Dataset,
-    variables: abc.Sequence[abc.Hashable],
-    axes: abc.Sequence[bh.axis.Axis],
-    bins_names: abc.Sequence[abc.Hashable],
-    **kwargs,
-) -> xr.Dataset:
-    """Compute histogram for numpy data."""
-    histref = bh.Histogram(*axes, **kwargs)
-
-    data = [ds[v].data for v in variables]
-    if VAR_WEIGHTS in ds:
-        weights = ds[VAR_WEIGHTS].data
-        hist = _blocked_dd_w(*data, weights, histref=histref)
-    else:
-        hist = _blocked_dd(*data, histref=histref)
-
-    return xr.DataArray(hist.values(), dims=bins_names, name=VAR_HIST).to_dataset()
+    # TODO: Use functools.partial instead, _bocked_dd does not have the same signature
+    func = _blocked_dd_loop if axis_loop else _blocked_dd
+    dtype = (
+        int
+        if histref.storage_type in (bh.storage.Int64, bh.storage.AtomicInt64)
+        else float
+    )
+    blocked = da.map_blocks(
+        func,
+        *data,
+        axis_loop=axis_loop,
+        axis_agg=axis_agg,
+        weight=weight,
+        histref=histref,
+        dtype=dtype,
+        chunks=(
+            *[data[0].chunks[i][0] for i in axis_loop],
+            *[1 for _ in axis_agg],
+            *histref.shape,
+        ),
+        new_axis=[data[0].ndim + i for i in range(histref.ndim)],
+        enforce_ndim=True,
+        name="hist-on-block",
+        meta=np.array((), dtype=dtype),
+    )
+    return blocked.sum(axis_agg)
 
 
-def data_sanity_check(data: abc.Sequence[xr.DataArray]):
-    """Ensure data is correctly formated.
-
-    Raises
-    ------
-    TypeError
-        If a 0-length sequence was supplied.
-    TypeError
-        If any data is not a :class:`xarray.DataArray`.
-    ValueError
-        If set of dimensions are not identical in all arrays.
-    """
-    if len(data) == 0:
-        raise TypeError("Data sequence of length 0.")
-    for a in data:
-        if not isinstance(a, xr.DataArray):
-            raise TypeError(
-                f"Data must be a xr.DataArray, a type {type(a).__name__} was supplied."
-            )
-
-
-def weight_sanity_check(
-    weight: abc.Sequence[xr.DataArray], data: abc.Sequence[xr.DataArray]
-):
-    """Ensure weight is correctly formated.
-
-    Raises
-    ------
-    TypeError
-        If weight is not a :class:`xarray.DataArray`.
-    ValueError
-        If the set of dimensions are not the same in weights as data.
-    """
-    if not isinstance(weight, xr.DataArray):
-        raise TypeError(
-            "Weights must be a xr.DataArray, "
-            f"a type {type(weight).__name__} was supplied."
-        )
-
-
-def silent_minmax_warning():
-    """Filter out the warning for computing min-max values."""
-    warnings.filterwarnings("ignore", category=BinsMinMaxWarning)
-
-
-def manage_bins_input(
-    bins: abc.Sequence[AxisSpec], data: abc.Sequence[xr.DataArray]
+def get_axes_from_specs(
+    bins: abc.Sequence[BinsType] | BinsType,
+    ranges: abc.Sequence[RangeType] | None,
+    data: abc.Sequence[xr.DataArray],
 ) -> tuple[bh.axis.Axis, ...]:
     """Check bins input and convert to boost objects.
 
@@ -346,45 +303,43 @@ def manage_bins_input(
     ValueError
         If there are not as much bins specifications as data arrays.
     """
+    if isinstance(bins, bh.axis.Axis | int):
+        bins = [copy(bins) for _ in _range(len(data))]
+    if ranges is None:
+        ranges = [(None, None) for _ in _range(len(data))]
+
     if len(bins) != len(data):
-        raise ValueError(
+        raise IndexError(
             f"Not as much bins specifications ({len(bins)}) "
             f"as data arrays ({len(data)}) were supplied"
         )
-    bins_out = []
-    for spec, a in zip(bins, data):  # noqa: B905
+    if len(ranges) != len(data):
+        raise IndexError(
+            f"Not as much range specifications ({len(ranges)}) "
+            f"as data arrays ({len(data)}) were supplied"
+        )
+
+    axes = []
+    for spec, range, a in zip(bins, ranges, data, strict=False):
         if isinstance(spec, bh.axis.Axis):
-            bins_out.append(spec)
-            continue
-        if isinstance(spec, int):
-            nbins = spec
-            warnings.warn(
-                (
-                    "Range was not supplied, the minimum and maximum values "
-                    "will have to be computed. use `silent_minmax_warning()` to "
-                    "silent this warning."
-                ),
-                BinsMinMaxWarning,
-                stacklevel=1,
-            )
-            start = float(a.min().values)
-            stop = float(a.max().values)
+            axes.append(spec)
+        elif isinstance(spec, int):
+            start, stop = range
+            if start is None:
+                start = float(a.min())
+            if stop is None:
+                stop = float(a.max())
+
+            axes.append(bh.axis.Regular(spec, start, stop))
         else:
-            if len(spec) != 3:  # noqa: PLR2004
-                raise IndexError(
-                    f"Unexpected length of regular bins specification ({len(spec)})"
-                )
-            if not isinstance(spec[0], int):
-                raise TypeError(
-                    "First item of bins specification should be an integer: "
-                    f"the number of bins. Received {type(spec[0])}"
-                )
+            raise TypeError(
+                "Bins must be specified as boost Axis or with an integer. "
+                f"Received {type(spec)}."
+            )
 
-            nbins = spec[0]
-            start, stop = spec[1:]
-        bins_out.append(bh.axis.Regular(nbins, start, stop))
+    # TODO check for growth
 
-    return tuple(bins_out)
+    return tuple(axes)
 
 
 def is_any_dask(data: abc.Sequence[xr.DataArray]) -> bool:
