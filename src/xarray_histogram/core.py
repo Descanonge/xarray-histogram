@@ -46,8 +46,47 @@ def histogram(
     weights: xr.DataArray | None = None,
     density: bool = False,
     dims: abc.Collection[abc.Hashable] | None = None,
-    **kwargs,
+    storage: bh.storage.Storage | None = None,
 ) -> xr.DataArray:
+    """Compute histogram of a single variable.
+
+    Parameters
+    ----------
+    x
+        The array to compute the histogram from.
+    bins
+        Bins specification that can be:
+
+        * a :class:`boost_histogram.axis.Axis`.
+        * an :class:`int` for the number of bins in a
+          :class:`~boost_histogram.axis.Regular` axis where the minimum and
+          maximum values are specified by *range* or computed.
+    range
+        The lower and upper range of the bins. If either is left to None, it will be
+        computed with ``x.min()`` or ``x.max()``.
+    weights
+        Array of weights, broadcastable against the input *data*. Each value in *data*
+        only contributes its associated weight towards the bin count (instead of 1). If
+        density is False, the values of the returned histogram are equal to the sum of
+        the weights belonging to the samples falling into each bin.
+    density
+        If False (default), returns the number of samples in each bin. If True, returns
+        the probability density function at the bin,
+        ``bin_count / sample_count / bin_area``.
+    dims
+        Dimensions to compute the histogram along to. If left to None the data is
+        flattened along all axes.
+    storage
+        Storage object used by the histogram. If None, the default
+        :class:`~boost_histogram.storage.Double()` is used. Currently, accumulator
+        storage (with more than one value stored) are not supported.
+
+    Returns
+    -------
+    histogram
+        DataArray named ``<x name>_histogram``. The bins coordinates is named
+        ``<x name>_bins``.
+    """
     return histogramdd(
         x,
         bins=bins,
@@ -55,7 +94,7 @@ def histogram(
         weights=weights,
         density=density,
         dims=dims,
-        **kwargs,
+        storage=storage,
     )
 
 
@@ -68,8 +107,53 @@ def histogram2d(
     weights: xr.DataArray | None = None,
     density: bool = False,
     dims: abc.Collection[abc.Hashable] | None = None,
-    **kwargs,
+    storage: bh.storage.Storage | None = None,
 ) -> xr.DataArray:
+    """Compute 2-dimensional histogram.
+
+    Parameters
+    ----------
+    x, y
+        The arrays to compute the histogram from. They must be broadcastable against
+        each other.
+    bins
+        Bins specification that can be:
+
+        * a :class:`boost_histogram.axis.Axis`.
+        * an :class:`int` for the number of bins in a
+          :class:`~boost_histogram.axis.Regular` axis where the minimum and
+          maximum values are specified by *range* or computed.
+
+        If a single specification is passed, it will be reused for all variables.
+        Otherwise a sequence of specification must be passed in the same order as the
+        *x* and *y*.
+    range
+        Sequence of lower and upper ranges of the bins for each variable. If either is
+        left to None, it will be computed with ``x.min()`` or ``x.max()``.
+    weights
+        Array of weights, broadcastable against the input *data*. Each value in *data*
+        only contributes its associated weight towards the bin count (instead of 1). If
+        density is True weights are normalized to 1. If density is False, the values of
+        the returned histogram are equal to the sum of the weights belonging to the
+        samples falling into each bin.
+    density
+        If False (default), returns the number of samples in each bin. If True, returns
+        the probability density function at the bin,
+        ``bin_count / sample_count / bin_area``.
+    dims
+        Dimensions to compute the histogram along to. If left to None the data is
+        flattened along all axes.
+    storage
+        Storage object used by the histogram. If None, the default
+        :class:`~boost_histogram.storage.Double()` is used. Currently, accumulator
+        storage (with more than one value stored) are not supported.
+
+    Returns
+    -------
+    histogram
+        DataArray named ``<x name>_<y name>_histogram``. The bins coordinates are named
+        ``<variable name>_bins``.
+    """
     return histogramdd(
         x,
         y,
@@ -78,7 +162,7 @@ def histogram2d(
         weights=weights,
         density=density,
         dims=dims,
-        **kwargs,
+        storage=storage,
     )
 
 
@@ -90,9 +174,8 @@ def histogramdd(
     density: bool = False,
     dims: abc.Collection[abc.Hashable] | None = None,
     storage: bh.storage.Storage | None = None,
-    **kwargs,
 ) -> xr.DataArray:
-    """Compute histogram.
+    """Compute N-dimensional histogram.
 
     Parameters
     ----------
@@ -103,33 +186,43 @@ def histogramdd(
         dask array, other inputs will be transformed into a dask array of a single
         chunk.
     bins
-        Sequence of specifications for the histogram bins, in the same order as the
-        variables of `data`.
-
-        Specification can either be:
+        Bins specification that can be:
 
         * a :class:`boost_histogram.axis.Axis`.
-        * a tuple of (number of bins, minimum value, maximum value) in which case the
-          bins will be linearly spaced
-        * only the number of bins, the minimum and maximum values are then computed from
-          the data on the spot.
-    dims
-        Dimensions to compute the histogram along to. If left to None the
-        data is flattened along all axis.
+        * an :class:`int` for the number of bins in a
+          :class:`~boost_histogram.axis.Regular` axis where the minimum and
+          maximum values are specified by *range* or computed.
+
+        If a single specification is passed, it will be reused for all variables.
+        Otherwise a sequence of specification must be passed in the same order as the
+        input *data*.
+    range
+        Sequence of lower and upper ranges of the bins for each variable. If either is
+        left to None, it will be computed with ``x.min()`` or ``x.max()``.
     weights
-        Array of the weights to apply for each data-point.
+        Array of weights, broadcastable against the input *data*. Each value in *data*
+        only contributes its associated weight towards the bin count (instead of 1). If
+        density is True weights are normalized to 1. If density is False, the values of
+        the returned histogram are equal to the sum of the weights belonging to the
+        samples falling into each bin.
     density
-        If true normalize the histogram so that its integral is one.
-        Does not take into account `weight`. Default is false.
-    kwargs
-        Passed to :class:`boost_histogram.Histogram` initialization.
+        If False (default), returns the number of samples in each bin. If True, returns
+        the probability density function at the bin,
+        ``bin_count / sample_count / bin_area``.
+    dims
+        Dimensions to compute the histogram along to. If left to None the data is
+        flattened along all axes.
+    storage
+        Storage object used by the histogram. If None, the default
+        :class:`~boost_histogram.storage.Double()` is used. Currently, accumulator
+        storage (with more than one value stored) are not supported.
+
 
     Returns
     -------
     histogram
-        DataArray named ``<variables names>_histogram`` (for multi-dimensional
-        histograms the names are separated by underscores). The bins coordinates are
-        named ``<variable name>_bins``.
+        DataArray named ``<variables names separated by an underscore>_histogram``. The
+        bins coordinates are named ``<variable name>_bins``.
     """
     variables = [a.name for a in data]
     bins_names = [f"{v}_bins" for v in variables]
