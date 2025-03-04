@@ -387,6 +387,9 @@ def _histogram_dask(
         if histref.storage_type in (bh.storage.Int64, bh.storage.AtomicInt64)
         else float
     )
+    # we don't use da.reduction. map_blocks allows for chunk changing shape,
+    # and we use _tree_reduce to aggregate over axis_agg, this avoids the 'chunk' step
+    # of da.reduction
     blocked = da.map_blocks(
         func,
         *data,
@@ -405,7 +408,16 @@ def _histogram_dask(
         name="hist-on-block",
         meta=np.array((), dtype=dtype),
     )
-    return blocked.sum(axis_agg)
+    reduc = da.reductions._tree_reduce(
+        blocked,
+        da.sum,
+        axis=axis_agg,
+        keepdims=False,
+        dtype=dtype,
+        name="sum-hist",
+        concatenate=True,
+    )
+    return reduc
 
 
 def get_axes_from_specs(
