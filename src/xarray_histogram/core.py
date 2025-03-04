@@ -235,9 +235,9 @@ def histogramdd(
 
     if storage is None:
         storage = bh.storage.Double()
-    if storage not in SIMPLE_STORAGE:
+    if type(storage) not in SIMPLE_STORAGE:
         warnings.warn(
-            f"Accumulator storages are not supported ({storage})",
+            f"Accumulator storages are not supported (received {type(storage)})",
             UserWarning,
             stacklevel=1,
         )
@@ -462,11 +462,9 @@ def get_axes_from_specs(
             axes.append(bh.axis.Regular(spec, start, stop))
         else:
             raise TypeError(
-                "Bins must be specified as boost Axis or with an integer. "
-                f"Received {type(spec)}."
+                "Bins must be specified as boost Axis or with an integer "
+                f"(received {type(spec)})."
             )
-
-    # TODO check for growth
 
     return tuple(axes)
 
