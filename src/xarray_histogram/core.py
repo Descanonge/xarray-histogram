@@ -253,6 +253,10 @@ def histogramdd(
         data = tuple(a.chunk({}) for a in data)
         data = xr.unify_chunks(*data)  # type: ignore[assignment]
 
+        for ax in axes:
+            if ax.traits.growth:
+                raise ValueError(f"Axes cannot grow when using Dask ({ax})")
+
     data_dims = data[0].dims
     if dims is None:
         dims = data_dims
