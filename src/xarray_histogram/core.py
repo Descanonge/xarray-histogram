@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import operator
+import warnings
 from collections import abc
 from copy import copy
 from functools import partial, reduce
@@ -25,8 +26,12 @@ try:
 except ImportError:
     HAS_DASK = False
 
-
-# TODO Forbid growth when using dask
+SIMPLE_STORAGE: list[type[bh.storage.Storage]] = [
+    bh.storage.Double,
+    bh.storage.Unlimited,
+    bh.storage.Int64,
+    bh.storage.AtomicInt64,
+]
 
 _range = range
 
@@ -230,6 +235,12 @@ def histogramdd(
 
     if storage is None:
         storage = bh.storage.Double()
+    if storage not in SIMPLE_STORAGE:
+        warnings.warn(
+            f"Accumulator storages are not supported ({storage})",
+            UserWarning,
+            stacklevel=1,
+        )
     histref = bh.Histogram(*axes, storage=storage)
 
     if weights is not None:
