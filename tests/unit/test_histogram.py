@@ -130,6 +130,11 @@ def id_x(x: xr.DataArray):
     return s
 
 
+def test_storage_warning():
+    with pytest.warns(UserWarning, match="^Accumulator storages are not supported"):
+        xh.histogram(get_array([5]), storage=bh.storage.Weight())
+
+
 class TestUnivariate:
     """Check histogram of a single variable."""
 
