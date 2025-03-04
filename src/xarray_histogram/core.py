@@ -43,6 +43,9 @@ BinsType = bh.axis.Axis | int
 RangeType = tuple[float | None, float | None]
 
 
+# TODO add flow
+
+
 def histogram(
     x: xr.DataArray,
     /,
@@ -264,14 +267,10 @@ def histogramdd(
     dims = [d for d in data_dims if d in dims]
     dims_loop = [d for d in data_dims if d not in dims]
 
-    histogram_func_kwargs = dict(weight=weights is not None, histref=histref)
-
-    # we vectorize our dask function using blockwise
-    if is_dask and len(dims_loop) > 0:
+    if is_dask:
         axis_loop = [data_dims.index(d) for d in dims_loop]
         axis_agg = [data_dims.index(d) for d in dims]
-
-        g = _histogram_dask(
+        counts = _histogram_dask(
             *[a.data for a in data],
             axis_loop=axis_loop,
             axis_agg=axis_agg,
@@ -279,7 +278,8 @@ def histogramdd(
             histref=histref,
         )
 
-        hist = xr.DataArray(g, dims=dims_loop + bins_names, name=VAR_HIST)
+        hist = xr.DataArray(counts, dims=dims_loop + bins_names, name=VAR_HIST)
+
     else:
         hist = xr.apply_ufunc(
             _blocked_dd,
@@ -287,8 +287,7 @@ def histogramdd(
             input_core_dims=[list(dims) for _ in data],
             output_core_dims=[bins_names],
             vectorize=True,
-            dask="allowed",
-            kwargs=histogram_func_kwargs,
+            kwargs=dict(weight=weights is not None, histref=histref),
         ).rename(VAR_HIST)
 
     for name, b in zip(bins_names, axes, strict=True):
@@ -309,7 +308,9 @@ def _clone(histref: bh.Histogram) -> bh.Histogram:
     return bh.Histogram(*histref.axes, storage=histref.storage_type())
 
 
-def _blocked_dd(*data: NDArray, weight: bool, histref: bh.Histogram) -> NDArray:
+def _blocked_dd(
+    *data: NDArray, weight: bool, histref: bh.Histogram, keepdims: bool = False
+) -> NDArray:
     """Multiple variables, ND arrays.
 
     Arrays are already broadcasted.
@@ -324,7 +325,12 @@ def _blocked_dd(*data: NDArray, weight: bool, histref: bh.Histogram) -> NDArray:
     else:
         thehist.fill(*flattened)
 
-    return thehist.values()
+    counts = thehist.values()
+
+    if keepdims:
+        counts = np.expand_dims(counts, tuple(_range(data[0].ndim)))
+
+    return counts
 
 
 def _blocked_dd_loop(
@@ -333,12 +339,13 @@ def _blocked_dd_loop(
     axis_loop: abc.Sequence[int],
     weight: bool,
     histref: bh.Histogram,
+    keepdims: bool = False,
 ) -> NDArray:
     """Multiple variables, ND arrays.
 
     Arrays are already broadcasted.
     """
-    # move aggregated axis at the end
+    # move aggregated axes at the end
     ndim = data[0].ndim
     ordered = [
         np.moveaxis(a, axis_agg, tuple(_range(ndim - len(axis_agg), ndim)))
@@ -352,7 +359,7 @@ def _blocked_dd_loop(
     n_loop = reduce(operator.mul, shape_loop)
     flattened = [np.reshape(a, (n_loop, n_agg)) for a in ordered]
 
-    values = np.zeros((n_loop, *histref.shape))
+    counts = np.zeros((n_loop, *histref.shape))
     for i in range(n_loop):
         thehist = _clone(histref)
         if weight:
@@ -362,14 +369,15 @@ def _blocked_dd_loop(
             thehist.fill(*[a[i] for a in flattened])
 
         # TODO: take care of flow
-        values[i] = thehist.values()
+        counts[i] = thehist.values()
 
-    out = np.reshape(values, (*shape_loop, *histref.shape))
-    out = da.expand_dims(
-        out, tuple(_range(len(axis_loop), len(axis_loop) + len(axis_agg)))
-    )
+    counts = np.reshape(counts, (*shape_loop, *histref.shape))
+    if keepdims:
+        counts = np.expand_dims(
+            counts, tuple(_range(len(axis_loop), len(axis_loop) + len(axis_agg)))
+        )
 
-    return out
+    return counts
 
 
 def _histogram_dask(
@@ -380,8 +388,17 @@ def _histogram_dask(
     histref: bh.Histogram,
 ) -> da.Array:
     """Compute histogram for dask data."""
-    # TODO: Use functools.partial instead, _bocked_dd does not have the same signature
-    func = _blocked_dd_loop if axis_loop else _blocked_dd
+    if axis_loop:
+        func = partial(
+            _blocked_dd_loop,
+            axis_loop=axis_loop,
+            axis_agg=axis_agg,
+            weight=weight,
+            histref=histref,
+        )
+    else:
+        func = partial(_blocked_dd, weight=weight, histref=histref)
+
     dtype = (
         int
         if histref.storage_type in (bh.storage.Int64, bh.storage.AtomicInt64)
@@ -393,10 +410,7 @@ def _histogram_dask(
     blocked = da.map_blocks(
         func,
         *data,
-        axis_loop=axis_loop,
-        axis_agg=axis_agg,
-        weight=weight,
-        histref=histref,
+        keepdims=True,
         dtype=dtype,
         chunks=(
             *[data[0].chunks[i][0] for i in axis_loop],
