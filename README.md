@@ -3,20 +3,23 @@
 
 > Compute and manipulate histograms from XArray data using BoostHistogram
 
-This package allow to compute histograms from XArray data, taking advantage of
-its label and dimensions management.
-It relies on the [Boost Histogram](https://boost-histogram.readthedocs.io) library for the computations.
+This package allow to compute histograms from and to XArray data.
+It relies on the [Boost Histogram](https://boost-histogram.readthedocs.io) library giving better performances compared to Numpy.histogram and the existing [xhistogram](https://xhistogram.readthedocs.io/en/latest/).
+It also brings features such as integer/discrete bins or periodic bins.
 
-It is essentially a thin wrapper using directly [Boost Histogram](https://boost-histogram.readthedocs.io) on loaded data, or [Dask-histogram](https://dask-histogram.readthedocs.io) on data contained in Dask arrays. It thus features optimized performance, as well as lazy computation and easy up-scaling thanks to Dask.
+Dask arrays are supported.
+
+Vectorized manipulation and analysis of the resulting histogram(s) is provided via an XArray accessor.
 
 ## Quick examples
 
-Bins can be specified similarly to Numpy functions:
+Three functions similar as Numpy are provided (histogram, histogram2d, and historamdd).
 ``` python
 import xarray_histogram as xh
-hist = xh.histogram(data, bins=[(100, 0., 10.)])
+hist = xh.histogram(data, bins=100, range=(0, 10))
 ```
-but also using boost [axes](https://boost-histogram.readthedocs.io/en/latest/user-guide/axes.html), benefiting from their features:
+
+Bins can be specified directly via Boost [axes](https://boost-histogram.readthedocs.io/en/latest/user-guide/axes.html) for a finer control. The equivalent would be:
 ``` python
 import boost_histogram.axis as bha
 hist = xh.histogram(data, bins=[bha.Regular(100, 0., 10.)])
@@ -24,23 +27,22 @@ hist = xh.histogram(data, bins=[bha.Regular(100, 0., 10.)])
 
 Multi-dimensional histogram can be computed, here in 2D for instance:
 ``` python
-hist = xh.histogram(
+hist = xh.histogramdd(
     temp, chlorophyll,
     bins=[bha.Regular(100, -5., 40.), bha.Regular(100, 1e-3, 10, transform=bha.transform.log))
 )
 ```
 
-Finally, so far we have computed histograms on the whole flattened arrays, but we can compute only along some dimensions. For instance we can retrieve the time evolution of an histogram:
+The histograms can be computed on the whole flattened arrays, but we can apply it to only some dimensions. For instance we can retrieve the time evolution of an histogram:
 ``` python
 hist = xh.histogram(temp, bins=[bha.Regular(100, 0., 10.)], dims=['lat', 'lon'])
 ```
 
-Histograms can be normalized, and weights can be applied.
-All of this works seamlessly with data stored in numpy or dask arrays.
+Weights can be applied. Output histogram can be normalized
 
 ## Accessor
 
-An Xarray [accessor](https://docs.xarray.dev/en/latest/internals/extending-xarray.html) can be made available to do certain manipulations on histogram data. Simply import `xarray_histogram.accessor`, all arrays can then access methods through the `hist` property::
+An Xarray [accessor](https://docs.xarray.dev/en/latest/internals/extending-xarray.html) is provided to do some vectorized manipulations on histogram data. Simply import `xarray_histogram.accessor`, and all arrays can then access methods through the `hist` property::
 
 ``` python
 hist.hist.edges()
@@ -50,25 +52,22 @@ hist.hist.ppf(q=0.75)
 
 See the [accessor API](https://xarray-histogram.readthedocs.io/en/latest/_api/xarray_histogram.accessor.html) for more details.
 
+The [Unified Histogram Indexing](https://uhi.readthedocs.io/en/latest/indexing.html) could be implemented in the accessor, especially for the rebinning operations.
+
+## Dask support
+
+Dask arrays are supported for most use cases, however some features of Boost are not yet available:
+- Growing axes: Dask requires to know in advance the size of output chunks. This could reasonably be supported, at least when applying over the whole array (no looping dimensions).
+- Advanced storage: they make available various variables such as the variance. They require more than one number per bin, and a more complex sum of two histograms (possibly making histogram along chunked dimensions impossible). 
+
 ## Requirements
 
 - Python >= 3.11
 - numpy
 - xarray
 - [boost-histogram](https://github.com/scikit-hep/boost-histogram)
-- [dask](https://www.dask.org/) and [dask-histogram](https://github.com/dask-contrib/dask-histogram) (optional)
-- scipy (optional)
-
-## Installation
-
-From source with:
-``` shell
-git clone https://github.com/Descanonge/xarray-histogram
-cd xarray-histogram
-pypi install -e .
-```
-
-Soon on Pypi.
+- [dask](https://www.dask.org/) (optional)
+- scipy (optional, for accessor)
 
 ## Documentation
 
@@ -92,4 +91,5 @@ To compare performances check these notebooks for [numpy](./docs/source/perf_num
 ## Other packages
 
 [xhistogram](https://xhistogram.readthedocs.io/en/latest/) already exists. It relies on Numpy functions and thus does not benefit of some performance upgrades brought by Boost (see performance comparisons).
-I also hoped to bring similar features with simpler code, relying on dependencies. Some additional features of boost (overflow bins, rebinning, extracting various statistics from the DataArray histogram) could be added (this is in the works).
+
+[dask-histogram](https://github.com/dask-contrib/dask-histogram) ports Boost-histogram for Dask. It does not support multi-dimensional arrays, but outputs boost objects directly rather than Dask arrays.
