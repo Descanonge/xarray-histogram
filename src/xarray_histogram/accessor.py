@@ -396,7 +396,7 @@ class HistDataArrayAccessor:
                 f"Confidence must be between 0 and 1. (received {confidence})"
             )
         p_tail = (1 - confidence) / 2
-        low = self._apply_rv_func("ppf", q=p_tail)
-        high = self._apply_rv_func("ppf", q=1 - p_tail)
+        low = self._apply_rv_func("ppf", variable, q=p_tail)
+        high = self._apply_rv_func("ppf", variable, q=1 - p_tail)
         output = xr.Dataset(dict(confidence_low=low, confidence_high=high))
         return output
