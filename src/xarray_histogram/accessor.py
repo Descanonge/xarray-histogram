@@ -13,14 +13,8 @@ import xarray as xr
 from scipy.stats import rv_histogram
 
 
-class HistAccessor:
-    """Common Dataset and DataArray accessor functionality."""
-
-    pass
-
-
 @xr.register_dataarray_accessor("hist")
-class HistDataArrayAccesor(HistAccessor):
+class HistDataArrayAccessor:
     """Histogram accessor for DataArrays.
 
     .. important::
