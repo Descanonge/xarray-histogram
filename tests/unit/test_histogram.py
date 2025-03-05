@@ -89,7 +89,8 @@ def get_array(
 def get_weights(x: xr.DataArray, weight: bool) -> xr.DataArray | None:
     if not weight:
         return None
-    return get_array(x.shape, chunks=x.chunks, name="weights")
+    chunks = [c[0] for c in x.chunks] if x.chunks else None
+    return get_array(x.shape, chunks=chunks, name="weights")
 
 
 def get_ref_hist(
@@ -130,9 +131,13 @@ def id_x(x: xr.DataArray):
     return s
 
 
-def test_storage_warning():
-    with pytest.warns(UserWarning, match="^Accumulator storages are not supported"):
-        xh.histogram(get_array([5]), storage=bh.storage.Weight())
+class TestStorage:
+    def test_storage_warning(self):
+        with pytest.warns(UserWarning, match="^Accumulator storages are not supported"):
+            xh.histogram(get_array([5]), storage=bh.storage.Weight())
+
+    def test_int_storage(self):
+        pass
 
 
 class TestUnivariate:
@@ -170,9 +175,6 @@ class TestUnivariate:
 
         atol = 0 if density else 1
         assert_allclose(hist.to_numpy(), ref, atol=atol, rtol=1e-6)
-
-    def test_int_storage(self):
-        pass
 
     @pytest.mark.parametrize(
         "x",
@@ -240,9 +242,44 @@ class TestUnivariate:
                 ref = get_ref_hist(x_, axes=[ax], density=density, weights=w)
                 assert_allclose(h.to_numpy(), ref, atol=atol, rtol=1e-6)
 
-    # @pytest.mark.parametrize("kind", ["np", "da"])
-    # def test_weight_broadcast(self):
-    #     pass
+    @pytest.mark.parametrize(
+        "x",
+        [
+            get_array([3, 20]),
+            get_array([3, 20], chunks=[1, 5]),
+            get_array([3, 10, 10]),
+            get_array([3, 10, 10], chunks=[1, 5, -1]),
+            get_array([3, 10, 10], chunks=[-1, 5, 1]),
+        ],
+        ids=id_x,
+    )
+    def test_weight_broadcast(self, x: xr.DataArray):
+        ax = bh.axis.Regular(30, 0.0, 1.0)
+        weights = get_weights(x, True).isel(x=0)
+        weights_ref = weights.expand_dims(x=x.sizes["x"])
+        ref = xh.histogram(x, bins=ax, weights=weights_ref, dims=x.dims)
+        hist = xh.histogram(x, bins=ax, weights=weights, dims=x.dims)
+        assert_allclose(hist.to_numpy(), ref.to_numpy(), atol=0.1, rtol=1e-6)
+
+    @pytest.mark.parametrize(
+        "x",
+        [
+            get_array([3, 10, 10]),
+            get_array([3, 10, 10], chunks=[1, 5, -1]),
+            get_array([3, 10, 10], chunks=[-1, 5, 1]),
+        ],
+        ids=id_x,
+    )
+    def test_weight_broadcast_along(self, x: xr.DataArray):
+        ax = bh.axis.Regular(30, 0.0, 1.0)
+        weights = get_weights(x, True).isel(x=0)
+        hist = xh.histogram(x, bins=ax, weights=weights, dims=["y", "w"])
+
+        for i in range(x.sizes["x"]):
+            ref = xh.histogram(x.isel(x=i), bins=ax, weights=weights)
+            assert_allclose(
+                hist.isel(x=i).to_numpy(), ref.to_numpy(), atol=0.1, rtol=1e-6
+            )
 
     # def test_weight_partial_dask(self):
     #     # only weight is dask
