@@ -4,7 +4,6 @@ An accessor registered as ``hist`` is made available on :class:`xarray.DataArray
 various histogram manipulations.
 """
 
-import re
 import typing as t
 from collections import abc
 
@@ -25,14 +24,13 @@ class HistDataArrayAccessor:
 
     They are some conditions for the accessor to be accessible:
 
+    * The coordinates of the bins must be named ``<variable>_bins``.
+    * Each bins coordinates must contain an attribute named `right_edge`, corresponding
+      to the right edge of the last bin.
     * The array must be named as ``<variable(s)_name>_<histogram or pdf>``. `histogram`
       if it is *not* normalized, and `pdf` if it is normalized as a probability density
       function. If the histogram is multi-dimensional, the variables names must be
       separated by underscores. For instance: ``Temp_Sal_histogram``.
-    * The variables found in the array name will be used to find the bins dimensions,
-      which must be named ``<variable>_bins``.
-    * Each bins coordinates must contain an attribute named `right_edge`, corresponding
-      to the right edge of the last bin.
 
     Those conventions are coherent with the output of :func:`.core.histogram`, so if you
     use this function you should not have to worry.
@@ -41,62 +39,62 @@ class HistDataArrayAccessor:
 
     Most computations are actually delegated to :class:`scipy.stats.rv_histogram`.
     Therefore, it does not support chunking along the bins dimensions (which should not
-    be a problem in most case).
+    be a problem in most cases).
     """
 
-    _NAME_PATTERN = re.compile(".+?_(?:.+?_)+(histogram|pdf)")
-    _VALID_NAMES: list[str] = ["histogram", "pdf"]
+    _VALID_TYPES: list[str] = ["histogram", "pdf"]
+    _variables: list[str]
+    _variable_type: str
 
     def __init__(self, obj: xr.DataArray) -> None:
         self._obj = obj
-        self._variable_type: str | None = None
-        self._variables: list[str] | None = None
 
-        self._check_validity()
-
-    @property
-    def variable_type(self) -> str:
-        """Kind of histogram (one of "histogram" or "pdf")."""
-        if self._variable_type is not None:
-            return self._variable_type
-        m = self._NAME_PATTERN.fullmatch(str(self._obj.name))
-        if m is None:
-            raise ValueError(f"Invalid array name '{self._obj.name}'")
-        name = m.group(1)
-        if name not in self._VALID_NAMES:
-            raise KeyError(
-                f"Invalid variable-type name '{name}'. "
-                f"Must be one of {self._VALID_NAMES}"
+        # Fetch variables
+        self.variables = []
+        for dim in self._obj.dims:
+            if str(dim).endswith("_bins"):
+                self.variables.append(str(dim).removesuffix("_bins"))
+        if not self.variables:
+            raise ValueError(
+                f"No bins coordinates found in DataArray '{self._obj.name}'"
             )
-        self._variable_type = name
-        return name
 
-    @property
-    def density(self) -> bool:
-        """Whether the histogram is normalized (based on the array name)."""
-        return self._variable_type == "pdf"
+        # Check array name
+        if not self._is_name_valid():
+            raise ValueError(f"Malformed array name '{self._obj.name}'")
 
-    @property
-    def variables(self) -> list[str]:
-        """List of variables included in the histograms."""
-        if self._variables is not None:
-            return self._variables
+        self._variable_type = str(self._obj.name).split("_")[-1]
+
+    def _is_name_valid(self) -> bool:
+        """Return if DataArray name is valid."""
         name = str(self._obj.name)
-        variables = name.removesuffix("_" + self.variable_type).split("_")
-        if not variables:
-            raise ValueError(f"No variables found in DataArray name '{name}'")
-        self._variables = variables
-        return self._variables
 
-    def _dim(self, variable: str) -> str:
-        """Transform a variable name to its corresponding dimension."""
-        return f"{variable}_bins"
+        self._variable_type = ""
+        for hist_type in self._VALID_TYPES:
+            if name.endswith(f"_{hist_type}"):
+                self._variable_type = hist_type
+                break
+        if not self._variable_type:
+            return False
 
-    def _check_validity(self) -> None:
-        """Check validity of histogram.
+        # Check all variables are accounted for
+        variables = list(self.variables)
+        while name:
+            for var in variables:
+                if name.startswith(var):
+                    name = name.removeprefix(var + "_")
+                    variables.remove(var)
+                    break
+        if variables:
+            return False
+
+        return True
+
+    def _check_bins(self) -> None:
+        """Check validity of bins.
 
         Check the variables names have corresponding bins dimensions, and if the
-        coordinates contain a `right_edge` attribute.
+        coordinates contain a `right_edge` attribute (if not try to infer it).
         """
         obj = self._obj
         for var in self.variables:
@@ -105,7 +103,14 @@ class HistDataArrayAccessor:
                 raise KeyError(f"No bin coordinates '{bin_dim}'")
             c = obj.coords[bin_dim]
             if "right_edge" not in c.attrs:
-                raise KeyError(f"No attribute 'right edge' in '{bin_dim}'.")
+                diff = np.diff(c)
+                if not np.allclose(diff, diff[0]):
+                    raise ValueError(
+                        f"Cannot infer right edge: bins for {var} "
+                        "are not regularly spaced."
+                    )
+                c.attrs["right_edge"] = (c[-1] + c[0]).values.item()
+
 
     def edges(self, variable: str | None = None) -> xr.DataArray:
         """Return the edges of the bins (including the right most edge)."""
