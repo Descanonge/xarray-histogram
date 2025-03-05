@@ -65,10 +65,10 @@ def histogram(
     bins
         Bins specification that can be:
 
-        * a :class:`boost_histogram.axis.Axis`.
+        * a Boost :external+boost-histogram:doc:`Axis<user-guide/axes>` object.
         * an :class:`int` for the number of bins in a
-          :class:`~boost_histogram.axis.Regular` axis where the minimum and
-          maximum values are specified by *range* or computed.
+          :external+boost-histogram:ref:`/user-guide/axes.rst#regular-axis` where the
+          minimum and maximum values are specified by *range* or computed from data.
     range
         The lower and upper range of the bins. If either is left to None, it will be
         computed with ``x.min()`` or ``x.max()``.
@@ -84,10 +84,10 @@ def histogram(
     dims
         Dimensions to compute the histogram along to. If left to None the data is
         flattened along all axes.
-    storage
-        Storage object used by the histogram. If None, the default
-        :class:`~boost_histogram.storage.Double()` is used. Currently, accumulator
-        storage (with more than one value stored) are not supported.
+    storage: ~boost_histogram.storage.Storage
+        Storage object used by the histogram. If None, the default one is used
+        (:external+boost-histogram:ref:`/user-guide/storage.rst#double`). Currently,
+        accumulator storage (with more than one value stored) are not supported.
 
     Returns
     -------
@@ -127,10 +127,10 @@ def histogram2d(
     bins
         Bins specification that can be:
 
-        * a :class:`boost_histogram.axis.Axis`.
+        * a Boost :external+boost-histogram:doc:`Axis<user-guide/axes>` object.
         * an :class:`int` for the number of bins in a
-          :class:`~boost_histogram.axis.Regular` axis where the minimum and
-          maximum values are specified by *range* or computed.
+          :external+boost-histogram:ref:`/user-guide/axes.rst#regular-axis` where the
+          minimum and maximum values are specified by *range* or computed from data.
 
         If a single specification is passed, it will be reused for all variables.
         Otherwise a sequence of specification must be passed in the same order as the
@@ -151,10 +151,10 @@ def histogram2d(
     dims
         Dimensions to compute the histogram along to. If left to None the data is
         flattened along all axes.
-    storage
-        Storage object used by the histogram. If None, the default
-        :class:`~boost_histogram.storage.Double()` is used. Currently, accumulator
-        storage (with more than one value stored) are not supported.
+    storage: ~boost_histogram.storage.Storage
+        Storage object used by the histogram. If None, the default one is used
+        (:external+boost-histogram:ref:`/user-guide/storage.rst#double`). Currently,
+        accumulator storage (with more than one value stored) are not supported.
 
     Returns
     -------
@@ -196,10 +196,10 @@ def histogramdd(
     bins
         Bins specification that can be:
 
-        * a :class:`boost_histogram.axis.Axis`.
+        * a Boost :external+boost-histogram:doc:`Axis<user-guide/axes>` object.
         * an :class:`int` for the number of bins in a
-          :class:`~boost_histogram.axis.Regular` axis where the minimum and
-          maximum values are specified by *range* or computed.
+          :external+boost-histogram:ref:`/user-guide/axes.rst#regular-axis` where the
+          minimum and maximum values are specified by *range* or computed from data.
 
         If a single specification is passed, it will be reused for all variables.
         Otherwise a sequence of specification must be passed in the same order as the
@@ -220,10 +220,10 @@ def histogramdd(
     dims
         Dimensions to compute the histogram along to. If left to None the data is
         flattened along all axes.
-    storage
-        Storage object used by the histogram. If None, the default
-        :class:`~boost_histogram.storage.Double()` is used. Currently, accumulator
-        storage (with more than one value stored) are not supported.
+    storage: ~boost_histogram.storage.Storage
+        Storage object used by the histogram. If None, the default one is used
+        (:external+boost-histogram:ref:`/user-guide/storage.rst#double`). Currently,
+        accumulator storage (with more than one value stored) are not supported.
 
 
     Returns
@@ -486,6 +486,6 @@ def get_axes_from_specs(
 def is_any_dask(data: abc.Sequence[xr.DataArray]) -> bool:
     """Check if any the variables are in dask format.
 
-    Only return true if Dask and Dask-histogram are imported.
+    Only return true if Dask is imported.
     """
     return HAS_DASK and any(is_dask_collection(a.data) for a in data)
