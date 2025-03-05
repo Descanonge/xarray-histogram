@@ -4,8 +4,10 @@ An accessor registered as ``hist`` is made available on :class:`xarray.DataArray
 various histogram manipulations.
 """
 
+import operator
 import typing as t
 from collections import abc
+from functools import reduce
 
 import numpy as np
 import xarray as xr
@@ -133,6 +135,13 @@ class HistDataArrayAccessor:
         if variable is None:
             variable = self.variables[0]
         return self.edges(variable).diff(self._dim(variable))
+
+    def areas(self) -> xr.DataArray:
+        """Return the areas of the bins.
+
+        The product of the widths of all bins.
+        """
+        return reduce(operator.mul, (self.widths(var) for var in self.variables))
 
     def normalize(
         self, variables: str | abc.Sequence[str] | None = None
