@@ -113,11 +113,25 @@ class HistDataArrayAccessor:
                     )
                 c.attrs["right_edge"] = (c[-1] + c[0]).values.item()
 
+    def is_normalized(self) -> bool:
+        """Whether the histogram is normalized (based on the array name)."""
+        return self._variable_type == "pdf"
+
+    def _dim(self, variable: str) -> str:
+        """Transform a variable name to its corresponding dimension."""
+        return f"{variable}_bins"
+
+    def _variable(self, var: str | None) -> str:
+        """Return variable argument."""
+        if var is None:
+            if len(self.variables) == 1:
+                return self.variables[0]
+            raise TypeError("A variable must be given.")
+        return var
 
     def edges(self, variable: str | None = None) -> xr.DataArray:
         """Return the edges of the bins (including the right most edge)."""
-        if variable is None:
-            variable = self.variables[0]
+        variable = self._variable(variable)
         dim = self._dim(variable)
         coord = self._obj.coords[dim]
         re = coord.attrs["right_edge"]
@@ -132,8 +146,7 @@ class HistDataArrayAccessor:
 
     def widths(self, variable: str | None = None) -> xr.DataArray:
         """Return the width of all bins."""
-        if variable is None:
-            variable = self.variables[0]
+        variable = self._variable(variable)
         return self.edges(variable).diff(self._dim(variable))
 
     def areas(self) -> xr.DataArray:
@@ -156,7 +169,7 @@ class HistDataArrayAccessor:
             The variable(s), ie dimensions, along which to normalize.
         """
         hist = self._obj
-        if self.variable_type == "histogram":
+        if self._variable_type == "pdf":
             raise TypeError(f"'{hist.name}' already normalized.")
 
         if variables is None:
@@ -193,12 +206,11 @@ class HistDataArrayAccessor:
             of the `right_edge` attribute.
         variable
             The variable to transform. (This is equivalent to computing an histogram of
-            ``func(ds["variable"], **kwargs)``).
+            ``func(ds["variable"], **kwargs)``). It can be omitted for 1D histograms.
         kwargs
             Passed to the function.
         """
-        if variable is None:
-            variable = self.variables[0]
+        variable = self._variable(variable)
         dim = self._dim(variable)
         edges = self.edges(variable)
         new_edges = func(edges, **kwargs)
@@ -233,12 +245,10 @@ class HistDataArrayAccessor:
         kwargs
             Passed to the function.
         """
-        if variable is None:
-            variable = self.variables[0]
-
+        variable = self._variable(variable)
         dim = self._dim(variable)
         bins = self.edges(variable)
-        density = self.density
+        density = self.is_normalized()
 
         def wrapped(arr: np.ndarray) -> float:
             if np.all(np.isnan(arr)):
@@ -262,6 +272,8 @@ class HistDataArrayAccessor:
     def ppf(self, q: float, variable: str | None = None) -> xr.DataArray:
         """Return the percent point function at `q`.
 
+        Uses :class:`scipy.stats.rv_histogram` for computation.
+
         Parameters
         ----------
         q
@@ -277,6 +289,8 @@ class HistDataArrayAccessor:
     def median(self, variable: str | None = None) -> xr.DataArray:
         """Return the median value of the distribution.
 
+        Uses :class:`scipy.stats.rv_histogram` for computation.
+
         Parameters
         ----------
         variable
@@ -288,6 +302,8 @@ class HistDataArrayAccessor:
     def mean(self, variable: str | None = None) -> xr.DataArray:
         """Return the mean value of the distribution.
 
+        Uses :class:`scipy.stats.rv_histogram` for computation.
+
         Parameters
         ----------
         variable
@@ -298,6 +314,8 @@ class HistDataArrayAccessor:
 
     def cdf(self, x: float, variable: str | None = None) -> xr.DataArray:
         """Return the cumulative distribution function at `x`.
+
+        Uses :class:`scipy.stats.rv_histogram` for computation.
 
         Parameters
         ----------
@@ -312,6 +330,8 @@ class HistDataArrayAccessor:
     def var(self, variable: str | None = None) -> xr.DataArray:
         """Return the variance of the distribution.
 
+        Uses :class:`scipy.stats.rv_histogram` for computation.
+
         Parameters
         ----------
         variable
@@ -323,6 +343,8 @@ class HistDataArrayAccessor:
     def std(self, variable: str | None = None) -> xr.DataArray:
         """Return the standard deviation of the distribution.
 
+        Uses :class:`scipy.stats.rv_histogram` for computation.
+
         Parameters
         ----------
         variable
@@ -333,6 +355,8 @@ class HistDataArrayAccessor:
 
     def moment(self, order: int, variable: str | None = None) -> xr.DataArray:
         """Return the nth moment of the distribution.
+
+        Uses :class:`scipy.stats.rv_histogram` for computation.
 
         Parameters
         ----------
@@ -349,6 +373,8 @@ class HistDataArrayAccessor:
 
         The interval is computed as ``[ppf(p_tail); ppf(1-p_tail)]`` with
         ``p_tail = (1-confidence)/2``.
+
+        Uses :class:`scipy.stats.rv_histogram` for computation.
 
         Parameters
         ----------
