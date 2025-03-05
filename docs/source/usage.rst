@@ -4,47 +4,52 @@
 Usage
 =====
 
-This package supplies a single function to compute histograms, whatever their
-dimensionality: :func:`~core.histogram`.
+This package supplies functions similar to those of numpy:
+:func:`~core.histogram`, :func:`~core.histogram2d` and
+:func:`~core.histogramdd`.
 
 Input data
 ----------
 
-Its first parameter is the :class:`DataArrays<xarray.DataArray>` on which to
+The first parameters are the :class:`DataArray(s)<xarray.DataArray>` on which to
 compute the histogram. The function also accept an optional argument giving the
-weights to apply when computing the histogram. A single array will give a 1-d
-histogram, two arrays a 2-d histogram, etc.
-
-The underlying data can be Numpy arrays, in which case we will use
-:class:`boost_histogram.Histogram`; or Dask arrays for which we will use
-:func:`dask_histogram.partitioned_factory`. The latter does not accepts Numpy
-arrays, so in case of mixed types input (this include the weights) each non-Dask
-array will be transformed in a Dask array of a single chunk.
-
-The different arrays must be broadcastable against each other. For Dask arrays,
-chunks will be adapted using :func:`xarray.unify_chunks`.
-
-.. note::
-
-   You may have noticed we do not use :func:`dask_histogram.factory`. This is
-   because (perhaps surprisingly) it merges all chunks along histogram
-   dimensions before computing. This can result in loading in memory larger
-   amount of data than one might have hoped. Instead, we create a
-   :class:`~dask_histogram.PartitionedHistogram` (one histogram per chunk), and
-   then aggregate the results into one histogram using
-   :meth:`dask_histogram.PartitionedHistogram.collapse`.
-
+weights to apply when computing the histogram. All arguments must be
+broadcastable against each other. For Dask arrays, chunks will be adapted using
+:func:`xarray.unify_chunks`.
 
 Bins / Axes
 -----------
 
-To specify the bins for the different variables, a sequence of
-:data:`specifications<core.AxisSpec>` *of the same length as the histogram
-dimensionality* must be given to the `bins` argument.
+The bins can be specified by either:
 
-A specification can be an :class:`boost_histogram.axis.Axis` instance. This is
-used by the boost library, it allows for optimization and features like under
-and overflow bins and more. Some basic examples of axis include::
+* a :external+boost-histogram:doc:`Boost Axis<user-guide/axes>` object for finer
+  control
+* an :class:`int` giving the number of bins. The minimum and maximum values are
+  specified with the ``range`` argument or computed from data. The axis will be
+  :external+boost-histogram:ref:`Regular </user-guide/axes.rst#regular-axis>`.
+
+The ``range`` argument can supply the minimum and maximum values. Either or both
+can be set to None in which case it will be computed with ``x.min()`` or
+``x.max()``.
+So for instance::
+
+    xh.histogram(x, bins=10, range=(0., None))
+
+will result in a regular axis (equal width bins) ranging from 0 to the maximum
+value in *x*.
+
+Directly passing an array of edges as in :func:`numpy.histogram` is not
+supported. Instead, use a
+:external+boost-histogram:ref:`/user-guide/axes.rst#variable-axis`.
+
+.. tip::
+
+   Using regularly spaced bins (even with a
+   :external+boost-histogram:ref:`transform
+   </user-guide/axes.rst#regular-axis-transforms>` applied) is more efficient:
+   it avoids having to use dichotomy to find in which bin a value falls.
+
+Some basic examples of axis include::
 
    import boost_histogram.axis as bha
 
@@ -54,47 +59,45 @@ and overflow bins and more. Some basic examples of axis include::
    bha.Regular(200, 1e-3, 10., transform=bha.transform.log)
    # integer bins
    bha.Integer(0, 20)
-
-For more details on creating axes, see the user guide on
-:external+boost-histogram:doc:`user-guide/axes`.
-
-A specification can be a sequence of three numbers: the number of bins, the
-minimum value, and maximum value. It will result in a regular axis::
-
-  spec = (nbins, vmin, vmax)
-  axis = bha.Regular(nbins, vmin, vmax)
-
-
-Lastly, a specification can also be a single integer denoting the number of
-bins, the minimum and maximum values will be computed from the data. This is
-discouraged since the computation will be triggered on the spot. A warning will
-be emitted, to silence it execute :func:`~core.silent_minmax_warning`
-beforehand.::
-
-  spec = nbins
-  axis = bha.Regular(nbins, float(variable.vmin()), float(variable.vmax()))
-
+   # boolean
+   bha.Integer(0, 2, underflow=False, overflow=True)
 
 Output
 ------
 
-For now, :func:`~core.histogram` returns a simple :class:`xarray.DataArray`.
+All three functions return a simple :class:`xarray.DataArray`. Its name is
+``<variable names separated by underscores>_histogram`` (so for instance
+``x_y_histogram``). The bins edges are contained in coordinates named
+``<variable>_bins``. The right edge of the last bin is stored in a coordinate
+attribute.
 
+The nomenclature is the same as :external+xhistogram:doc:`xhistogram <index>` to
+ensure easy transition between the two packages. It also enables the use of an
+:doc:`accessor <accessor>` for extra features.
+
+The dtype of output DataArray is ``int`` if the
+:external+boost-histogram:doc:`storage <user-guide/storage>` is one of
+:class:`~boost_histogram.storage.Int64` or
+:class:`~boost_histogram.storage.AtomicInt64`, or ``float`` otherwise.
+
+.. admonition:: 🚧
+
+    It could be possible to enforce a given dtype. TODO...
 
 Examples
 ========
 
 Simple histogram::
 
-  from xarray_histogram import histogram
+  import xarray_histogram as xh
   import boost_histogram.axis as bha
 
-  hist = histogram(temp, bins=[bha.Regular(100, -5., 40.)])
+  hist = xh.histogram(temp, bins=bha.Regular(100, -5., 40.))
   hist.plot.line()
 
 Multi-dimensional histogram, here in 2D for instance::
 
-   hist = histogram(
+   hist = xh.histogram2d(
       temp, chlorophyll,
       bins=[
          bh.Regular(100, -5., 40.),
@@ -107,9 +110,9 @@ Finally, so far we have computed histograms on the whole flattened arrays, but
 we can compute only along some dimensions. For instance we can retrieve the time
 evolution of an histogram::
 
-   hist = histogram(
+   hist = xh.histogram(
       temp,
-      bins=[bha.Regular(100, 0., 10.)],
+      bins=bha.Regular(100, 0., 10.),
       dims=['lat', 'lon']
    )
    hist.plot.line(x="temp_bins")

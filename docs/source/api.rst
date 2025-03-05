@@ -12,7 +12,8 @@ Content
    :nosignatures:
 
    ~core.histogram
-   ~core.silent_minmax_warning
+   ~core.histogram2d
+   ~core.histogramdd
 
 Submodules
 ----------

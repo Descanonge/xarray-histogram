@@ -2,21 +2,24 @@
 XArray-Histogram documentation
 ==============================
 
-This package allow to compute histograms from XArray data, taking advantage of
-its label and dimensions management. It relies on the `Boost Histogram
-<https://boost-histogram.readthedocs.io>`_ library for the computations.
+This package allow to compute histograms from and to XArray data. It relies on
+the :external+boost-histogram:doc:`Boost Histogram <index>` library giving
+better performances compared to :func:`numpy.histogram` and the existing
+:external+xhistogram:doc:`xhistogram <index>`. It also brings features such as
+integer/discrete bins or periodic bins.
 
-It is essentially a thin wrapper using directly Boost Histogram on loaded data,
-or `Dask-histogram <https://dask-histogram.readthedocs.io>`_ on data contained
-in Dask arrays. It thus features optimised performance, as well as lazy
-computation and easy up-scaling thanks to Dask.
+Dask arrays are supported.
 
+Vectorized manipulation and analysis of the resulting histogram(s) is provided
+via an XArray accessor.
 
 .. toctree::
    :maxdepth: 2
    :caption: Contents:
 
    usage
+
+   accessor
 
 .. toctree::
    :maxdepth: 1

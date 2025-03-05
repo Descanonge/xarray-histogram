@@ -37,6 +37,7 @@ napoleon_numpy_docstring = True
 napoleon_use_param = True
 napoleon_use_rtype = False
 napoleon_preprocess_type = False
+# autodoc_type_aliases = {"bh.storage.Double": "boost_histogram.storage.Double"}
 
 add_module_names = False
 
@@ -55,6 +56,7 @@ intersphinx_mapping = {
     "numpy": ("https://numpy.org/doc/stable", None),
     "dask": ("https://docs.dask.org/en/latest", None),
     "xarray": ("https://docs.xarray.dev/en/stable", None),
+    "xhistogram": ("https://xhistogram.readthedocs.io/en/latest", None),
     "boost-histogram": ("https://boost-histogram.readthedocs.io/en/latest", None),
     "dask-histogram": ("https://dask-histogram.readthedocs.io/en/stable", None),
     "scipy": ("https://docs.scipy.org/doc/scipy", None),
