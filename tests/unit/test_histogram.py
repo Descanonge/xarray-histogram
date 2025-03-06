@@ -6,7 +6,8 @@ Results are compared with those from np.histogram.
 Tested arrays are generated automatically. Numpy and Dask arrays are used
 """
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
+from typing import Any
 
 import boost_histogram as bh
 import dask.array as da
@@ -17,24 +18,7 @@ from numpy.testing import assert_allclose
 
 import xarray_histogram as xh
 
-
-class InternalError(Exception):
-    pass
-
-
 np.random.seed(42)
-
-# Univariate
-# flat: single function with different input arrays
-# along 1d/2d: class with numpy and dask (with != chunking)
-
-# Multivariate
-# test simple, numpy and dask arrays
-# test with only some variables dask arrays
-
-# Density computation, for each test
-# Weight: for each test
-# (each test run 4 times)
 
 
 class TestBinsInput:
@@ -99,22 +83,21 @@ def get_ref_hist(
     weights: xr.DataArray | None = None,
     **kwargs,
 ) -> np.ndarray:
-    arg = [x.data for x in data]
+    # All inputs must have the same shape!!
+    args: Any = [x.compute().data.reshape(-1) for x in data]
     kwargs["bins"] = [ax.edges for ax in axes]
-    kwargs["weights"] = weights.data if weights is not None else None
+    kwargs["weights"] = (
+        weights.compute().data.reshape(-1) if weights is not None else None
+    )
 
-    module = da if xh.core.is_any_dask(data) else np
-    if len(data) == 1:
-        func = module.histogram
-        arg = arg[0]
+    if len(args) == 1:
+        func: Callable = np.histogram
+        args = args[0]
         kwargs["bins"] = kwargs["bins"][0]
     else:
-        func = module.histogramdd
+        func = np.histogramdd
 
-    ref, _ = func(arg, **kwargs)
-    if isinstance(ref, da.Array):
-        ref = ref.compute()
-
+    ref, _ = func(args, **kwargs)
     return ref
 
 
@@ -134,10 +117,50 @@ def id_x(x: xr.DataArray):
 class TestStorage:
     def test_storage_warning(self):
         with pytest.warns(UserWarning, match="^Accumulator storages are not supported"):
-            xh.histogram(get_array([5]), storage=bh.storage.Weight())
+            xh.histogram(get_array([5]), range=(0, 1), storage=bh.storage.Weight())
 
-    def test_int_storage(self):
-        pass
+    def test_storage_dtype(self):
+        x = get_array([10])
+        # Default
+        hist = xh.histogram(x, range=(0, 1))
+        assert np.isdtype(hist.dtype, kind="real floating")
+
+        # Int64
+        hist = xh.histogram(x, range=(0, 1), storage=bh.storage.Int64())
+        assert np.isdtype(hist.dtype, kind="signed integer")
+
+
+class TestCoordinates:
+    def test_coordinates_float(self):
+        ax = bh.axis.Regular(30, 0.0, 1.0)
+        x = get_array([20])
+        hist = xh.histogram(x, ax)
+
+        coord = hist["var1_bins"]
+        assert coord.size == ax.size
+        assert np.isdtype(coord.dtype, kind="real floating")
+        assert coord.attrs["right_edge"] == 1.0
+
+    def test_coordinate_int(self):
+        ax = bh.axis.Integer(0, 5)
+        x = get_array([20]).astype("int")
+        hist = xh.histogram(x, ax)
+
+        coord = hist["var1_bins"]
+        assert coord.size == ax.size
+        assert np.isdtype(coord.dtype, kind="signed integer")
+        assert coord.attrs["right_edge"] == 5
+
+    def test_coordinate_int_category(self):
+        ax = bh.axis.IntCategory([2, 5, 8, 7])
+        x = get_array([20]).astype("int")
+        hist = xh.histogram(x, ax)
+
+        coord = hist["var1_bins"]
+        assert coord.size == ax.size
+        assert np.isdtype(coord.dtype, kind="signed integer")
+        assert (coord == [2, 5, 8, 7]).all()
+        assert coord.attrs["right_edge"] == 8
 
 
 class TestUnivariate:
@@ -149,16 +172,16 @@ class TestUnivariate:
             get_array([20]),
             get_array([20], chunks=[-1]),
             get_array([20], chunks=[5]),
-            get_array([20, 15]),
-            get_array([20, 15], chunks=[1, 5]),
-            get_array([20, 15], chunks=[4, 5]),
-            get_array([20, 15], chunks=[4, -1]),
+            get_array([4, 8]),
+            get_array([4, 8], chunks=[1, 8]),
+            get_array([4, 8], chunks=[4, 2]),
+            get_array([4, 8], chunks=[2, 2]),
         ],
         ids=id_x,
     )
     @bool_param("weight")
     @bool_param("density")
-    def test_1d(self, x: xr.DataArray, weight: bool, density: bool):
+    def test_flat(self, x: xr.DataArray, weight: bool, density: bool):
         ax = bh.axis.Regular(30, 0.0, 1.0)
         weights = get_weights(x, weight)
         ref = get_ref_hist(x, axes=[ax], density=density, weights=weights)
@@ -172,6 +195,8 @@ class TestUnivariate:
         # Check lazy computation
         if x.chunks is not None:
             assert isinstance(hist.data, da.Array)
+        else:
+            assert isinstance(hist.data, np.ndarray)
 
         atol = 0 if density else 1
         assert_allclose(hist.to_numpy(), ref, atol=atol, rtol=1e-6)
@@ -199,6 +224,8 @@ class TestUnivariate:
         # Check lazy computation
         if x.chunks is not None:
             assert isinstance(hist.data, da.Array)
+        else:
+            assert isinstance(hist.data, np.ndarray)
 
         atol = 0 if density else 1
         for i in range(x.sizes["x"]):
@@ -209,11 +236,11 @@ class TestUnivariate:
     @pytest.mark.parametrize(
         "x",
         [
-            get_array([4, 5, 20]),
-            get_array([4, 5, 20, 10]),
+            get_array([4, 5, 8]),
             get_array([4, 5, 20], chunks=[1, 1, -1]),
             get_array([4, 5, 20], chunks=[2, 1, 4]),
-            get_array([4, 5, 20, 10], chunks=[2, 1, 4, -1]),
+            get_array([4, 5, 6, 6]),
+            get_array([4, 5, 6, 6], chunks=[2, 1, 2, 6]),
         ],
         ids=id_x,
     )
@@ -232,6 +259,8 @@ class TestUnivariate:
         # Check lazy computation
         if x.chunks is not None:
             assert isinstance(hist.data, da.Array)
+        else:
+            assert isinstance(hist.data, np.ndarray)
 
         atol = 0 if density else 1
         for ix in range(x.sizes["x"]):
@@ -247,9 +276,10 @@ class TestUnivariate:
         [
             get_array([3, 20]),
             get_array([3, 20], chunks=[1, 5]),
-            get_array([3, 10, 10]),
-            get_array([3, 10, 10], chunks=[1, 5, -1]),
-            get_array([3, 10, 10], chunks=[-1, 5, 1]),
+            get_array([3, 20], chunks=[1, 20]),
+            get_array([3, 6, 6]),
+            get_array([3, 6, 6], chunks=[1, 2, 6]),
+            get_array([3, 6, 6], chunks=[3, 2, 1]),
         ],
         ids=id_x,
     )
@@ -264,9 +294,9 @@ class TestUnivariate:
     @pytest.mark.parametrize(
         "x",
         [
-            get_array([3, 10, 10]),
-            get_array([3, 10, 10], chunks=[1, 5, -1]),
-            get_array([3, 10, 10], chunks=[-1, 5, 1]),
+            get_array([3, 6, 6]),
+            get_array([3, 6, 6], chunks=[1, 2, 6]),
+            get_array([3, 6, 6], chunks=[3, 2, 1]),
         ],
         ids=id_x,
     )
@@ -281,160 +311,120 @@ class TestUnivariate:
                 hist.isel(x=i).to_numpy(), ref.to_numpy(), atol=0.1, rtol=1e-6
             )
 
-    # def test_weight_partial_dask(self):
-    #     # only weight is dask
-    #     # only data is dask
-    #     pass
+    def test_weights_partial_dask(self):
+        # only weight is dask
+        x = get_array([4, 4], chunks=[1, 4])
+        weights = get_weights(x, True)
+        x = x.compute()
+        hist = xh.histogram(x, range=(0, 1), weights=weights)
+        assert isinstance(hist.data, da.Array)
 
-    # def test_dask_layers(self):
-    #     # check size of layers and number of partitions ?
-    #     pass
+        # only data is dask
+        x = get_array([4, 4], chunks=[1, 4])
+        weights = get_weights(x, True)
+        weights = weights.compute()
+        hist = xh.histogram(x, range=(0, 1), weights=weights)
+        assert isinstance(hist.data, da.Array)
 
+    def test_dask_layers(self):
+        x = get_array([8, 8], chunks=[2, 4])
+        hist = xh.histogram(x, bins=10, range=(0, 1), dims=["y"])
+        h = hist.data
 
-# class TestMultivariate:
-#     """Check ND-histogram over the whole flattened array."""
+        n_blocks = 4  # 8 / 2
 
-#     @pytest.mark.parametrize("kind", ["np", "da"])
-#     @pytest.mark.parametrize("density", [True, False], ids=["densT", "densF"])
-#     @pytest.mark.parametrize("weight", [True, False], ids=["wT", "wF"])
-#     def test_simple(self):
-#         assert 0
+        # Check blocksizes
+        assert h.shape == (8, 10)
+        assert h.npartitions == n_blocks
+        assert h.numblocks == (n_blocks, 1)
+        assert h.chunks == ((2, 2, 2, 2), (10,))
 
-#     @pytest.mark.parametrize("kind", ["np", "da"])
-#     def test_broadcast(self):
-#         assert 0
-
-#     @pytest.mark.parametrize("density", [True, False], ids=["densT", "densF"])
-#     @pytest.mark.parametrize("weight", [True, False], ids=["wT", "wF"])
-#     def test_partial_dask(self):
-#         """Only some of inputs are dask."""
-#         assert 0
-
-
-# @pytest.mark.parametrize("kind", ["np", "da"])
-# @pytest.mark.parametrize("density", [True, False], ids=["densT", "densF"])
-# @pytest.mark.parametrize("weight", [True, False], ids=["wT", "wF"])
-# def test_1d_flat(kind, density, weight):
-#     nbins = 50
-#     ranges = (-3, 3)
-#     size = 10_000
-#     chunk_size = size // 10
-#     vals = np.random.normal(size=(size)).astype(np.float32)
-
-#     if weight:
-#         weights = np.random.uniform(size=vals.shape).astype(np.float32)
-#     else:
-#         weights = None
-
-#     answer, _ = np.histogram(
-#         vals, bins=nbins, range=ranges, density=density, weights=weights
-#     )
-
-#     if kind == "np":
-#         pass
-#     elif kind == "da":
-#         vals = da.from_array(vals, chunks=(chunk_size,))
-#         if weight:
-#             weights = da.from_array(weights, chunks=(chunk_size,))
-#     else:
-#         raise InternalError
-
-#     data = xr.DataArray(vals, dims=["x"], name="data")
-#     if weight:
-#         weights = xr.DataArray(weights, dims=["x"], name="weights")
-
-#     bins = bh.axis.Regular(nbins, *ranges)
-#     h = xh.histogram(data, bins=[bins], density=density, weights=weights)
-
-#     # Check values
-#     assert_allclose(answer, h.values, rtol=1)
-
-#     # Check metadata
-#     assert h.shape == (nbins,)
+        # Check layers
+        assert h.name.startswith("sum-hist-aggregate-")
+        layers = h.dask._toposort_layers()
+        assert len(layers) == 3
+        assert layers[0] == x.data.name
+        assert layers[1].startswith("hist-on-block-")
+        assert layers[2].startswith("sum-hist-aggregate-")
 
 
-# @pytest.mark.parametrize("dim", [2, 3])
-# @pytest.mark.parametrize("kind", ["np", "da"])
-# @pytest.mark.parametrize("density", [True, False], ids=["densT", "densF"])
-# @pytest.mark.parametrize("weight", [True, False], ids=["wT", "wF"])
-# def test_nd_flat(dim, kind, density, weight):
-#     nbins = [50, 60, 70][:dim]
-#     ranges = [(-3, 3), (-2.5, 2.5), (-2, 2)][:dim]
-#     size = 1000
-#     chunk_size = size // 10
-#     vals = [np.random.normal(size=(size,)).astype(np.float32) for _ in range(dim)]
-
-#     if weight:
-#         weights = np.random.uniform(size=vals[0].shape).astype(np.float32)
-#     else:
-#         weights = None
-
-#     answer, _ = np.histogramdd(
-#         vals, bins=nbins, range=ranges, density=density, weights=weights
-#     )
-
-#     if kind == "np":
-#         pass
-#     elif kind == "da":
-#         vals = [da.from_array(v, chunks=(chunk_size,)) for v in vals]
-#         if weight:
-#             weights = da.from_array(weights, chunks=(chunk_size,))
-#     else:
-#         raise InternalError
-
-#     data = [xr.DataArray(v, dims=["x"], name=f"data_{i}") for i, v in enumerate(vals)]
-
-#     if weight:
-#         weights = xr.DataArray(weights, dims=["x"], name="weights")
-
-#     bins = [bh.axis.Regular(n, *r) for n, r in zip(nbins, ranges, strict=False)]
-#     h = xh.histogram(*data, bins=bins, density=density, weights=weights)
-
-#     # Check values
-#     assert_allclose(answer, h.values, rtol=1)
-
-#     # Check metadata
-#     assert h.shape == tuple(nbins)
+def id_data(data: Sequence[xr.DataArray]) -> str:
+    return f"{{{':'.join(id_x(x) for x in data)}}}"
 
 
-# @pytest.mark.parametrize("kind", ["np", "da"])
-# @pytest.mark.parametrize("density", [True, False], ids=["densT", "densF"])
-# @pytest.mark.parametrize("weight", [True, False], ids=["wT", "wF"])
-# def test_1d_along(kind, density, weight):
-#     nbins = 50
-#     ranges = (-3, 3)
-#     shape = (3, 200, 200)
-#     chunk_size = (1, 200, 100)
-#     vals = np.random.normal(size=shape).astype(np.float32)
+class TestMultivariate:
+    """Check ND-histogram over the whole flattened array."""
 
-#     if weight:
-#         weights = np.random.uniform(size=shape).astype(np.float32)
-#     else:
-#         weights = None
+    @pytest.mark.parametrize("nvar", [2, 3], ids=lambda i: f"nvar{i}")
+    @pytest.mark.parametrize(
+        "x",
+        [
+            get_array([20]),
+            get_array([20], chunks=[-1]),
+            get_array([20], chunks=[5]),
+            get_array([4, 8]),
+            get_array([4, 8], chunks=[1, 8]),
+            get_array([4, 8], chunks=[2, 2]),
+            get_array([4, 8], chunks=[4, 8]),
+        ],
+        ids=id_x,
+    )
+    @bool_param("weight")
+    @bool_param("density")
+    def test_multivar_simple(
+        self, nvar: int, x: xr.DataArray, weight: bool, density: bool
+    ):
+        data = [x.rename(f"var{i}") for i in range(nvar)]
+        weights = get_weights(x, weight)
 
-#     if kind == "np":
-#         pass
-#     elif kind == "da":
-#         vals = da.from_array(vals, chunks=chunk_size)
-#         if weight:
-#             weights = da.from_array(weights, chunks=chunk_size)
-#     else:
-#         raise InternalError
+        axes = [bh.axis.Regular(30, 0.0, 1.0) for _ in range(nvar)]
 
-#     dims = ["t", "x", "y"]
-#     data = xr.DataArray(vals, dims=dims, name="data")
-#     if weight:
-#         weights = xr.DataArray(weights, dims=dims, name="weights")
+        hist = xh.histogramdd(*data, bins=axes, weights=weights, density=density)
+        ref = get_ref_hist(*data, axes=axes, weights=weights, density=density)
 
-#     bins = bh.axis.Regular(nbins, *ranges)
-#     h = xh.histogram(
-#         data, bins=[bins], density=density, weights=weights, dims=["x", "y"]
-#     )
+        atol = 0 if density else 1
+        assert_allclose(hist.to_numpy(), ref, atol=atol, rtol=1e-6)
 
-#     # Check values
-#     for i in range(shape[0]):
-#         w = weights[i] if weight else None
-#         answer, _ = np.histogram(
-#             vals[i], bins=nbins, range=ranges, density=density, weights=w
-#         )
-#         assert_allclose(answer, h.isel(t=i).values, rtol=1)
+        assert hist.dims == tuple(f"{x.name}_bins" for x in data)
+
+    @pytest.mark.parametrize(
+        "data",
+        [
+            [get_array([20, 2]), get_array([20])],
+            [get_array([20, 2], chunks=[5, 1]), get_array([20], chunks=[5])],
+            [get_array([4, 8, 2]), get_array([4, 8])],
+            [get_array([4, 8, 2], chunks=[2, 2, 1]), get_array([4, 8], chunks=[2, 2])],
+        ],
+        ids=id_data,
+    )
+    @bool_param("weight")
+    def test_broadcast(self, data: Sequence[xr.DataArray], weight: bool):
+        """Test broadcasting of two variables.
+
+        x is [N, repeat] with repeat == 2
+        y is [N]
+        weights are [N, repeat]
+        """
+        x, y = [d.rename(f"var{i}") for i, d in enumerate(data)]
+        weights = get_weights(x, weight)
+
+        axes = [bh.axis.Regular(30, 0.0, 1.0) for _ in data]
+
+        hist = xh.histogramdd(x, y, bins=axes, weights=weights)
+
+        dim = x.dims[-1]
+        y_ref = y.expand_dims({dim: x.sizes[dim]}, axis=-1)
+        ref = get_ref_hist(x, y_ref, axes=axes, weights=weights)
+
+        assert_allclose(hist.to_numpy(), ref, atol=1, rtol=1e-6)
+
+    def test_partial_dask(self):
+        x = get_array([20], name="var1")
+        y = get_array([20], chunks=[5], name="var2")
+
+        axes = [bh.axis.Regular(30, 0.0, 1.0) for _ in range(2)]
+
+        hist = xh.histogramdd(x, y, bins=axes)
+        ref = get_ref_hist(x, y, axes=axes)
+
+        assert_allclose(hist.to_numpy(), ref, atol=1, rtol=1e-6)
