@@ -12,6 +12,7 @@ import warnings
 from collections import abc
 from copy import copy
 from functools import partial, reduce
+from typing import cast
 
 import boost_histogram as bh
 import numpy as np
@@ -290,9 +291,10 @@ def histogramdd(
             kwargs=dict(weight=weights is not None, histref=histref),
         ).rename(VAR_HIST)
 
-    for name, b in zip(bins_names, axes, strict=True):
-        hist = hist.assign_coords({name: b.edges[:-1]})
-        hist[name].attrs["right_edge"] = b.edges[-1]
+    for bins_name, ax in zip(bins_names, axes, strict=True):
+        edges = get_edges(ax)
+        hist = hist.assign_coords({bins_name: edges[:-1]})
+        hist[bins_name].attrs["right_edge"] = edges[-1]
 
     if density:
         widths = [
@@ -305,6 +307,21 @@ def histogramdd(
     hist_name = "pdf" if density else "histogram"
     hist = hist.rename("_".join(map(str, variables + [hist_name])))
     return hist
+
+
+def get_edges(ax: bh.axis.Axis) -> NDArray:
+    """Get edges of a given axis as a numpy array."""
+    edges = ax.edges
+
+    if isinstance(ax, bh.axis.Integer):
+        return edges.astype("int")
+
+    if isinstance(ax, bh.axis.IntCategory):
+        bins = [cast(int, ax.bin(i)) for i in range(ax.size)]
+        bins.append(bins[-1] + 1)  # right edge, not really applicable here though
+        return np.asarray(bins)
+
+    return edges
 
 
 def _clone(histref: bh.Histogram) -> bh.Histogram:
