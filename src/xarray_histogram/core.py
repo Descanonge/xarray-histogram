@@ -295,7 +295,10 @@ def histogramdd(
         hist[name].attrs["right_edge"] = b.edges[-1]
 
     if density:
-        widths = [np.diff(b.edges) for b in axes]
+        widths = [
+            xr.DataArray(np.diff(b.edges), dims=[name])
+            for b, name in zip(axes, bins_names, strict=True)
+        ]
         areas = xr.DataArray(reduce(operator.mul, widths), dims=bins_names)
         hist = hist / areas / hist.sum(bins_names)
 
