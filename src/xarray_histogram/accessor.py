@@ -60,16 +60,17 @@ class HistDataArrayAccessor:
             raise ValueError(
                 f"No bins coordinates found in DataArray '{self._obj.name}'"
             )
-
-        # Check array name
-        if not self._is_name_valid():
-            raise ValueError(f"Malformed array name '{self._obj.name}'")
+        self._check_name()
 
         self._variable_type = str(self._obj.name).split("_")[-1]
 
-    def _is_name_valid(self) -> bool:
+    def __repr__(self) -> str:
+        return f"Histogram accessor for {self._obj.name}"
+
+    def _check_name(self) -> None:
         """Return if DataArray name is valid."""
         name = str(self._obj.name)
+        err = f"Malformed array name '{name}'. "
 
         self._variable_type = ""
         for hist_type in self._VALID_TYPES:
@@ -77,20 +78,28 @@ class HistDataArrayAccessor:
                 self._variable_type = hist_type
                 break
         if not self._variable_type:
-            return False
+            raise ValueError(err + f"Name should end in one of {self._VALID_TYPES}")
 
         # Check all variables are accounted for
-        variables = list(self.variables)
-        while name:
-            for var in variables:
+        unaccounted = list(self.variables)
+        for _ in range(len(self.variables)):
+            for var in unaccounted:
+                found = False
                 if name.startswith(var):
+                    found = True
                     name = name.removeprefix(var + "_")
-                    variables.remove(var)
+                    unaccounted.remove(var)
                     break
-        if variables:
-            return False
-
-        return True
+            if not found:
+                raise ValueError(
+                    err
+                    + "Name contain unrecognized variables "
+                    + f"(found variables are {self.variables})."
+                )
+        if unaccounted:
+            raise ValueError(
+                err + f"Variables {unaccounted} are not present in DataArrayname."
+            )
 
     def _check_bins(self) -> None:
         """Check validity of bins.
