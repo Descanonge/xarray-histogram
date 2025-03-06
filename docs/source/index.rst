@@ -5,7 +5,7 @@
 XArray-Histogram documentation
 ##############################
 
-This package allow to compute histograms from and to XArray data. It relies on
+This package allows to compute histograms from and to XArray data. It relies on
 the :external+boost-histogram:doc:`Boost Histogram <index>` library giving
 better performances compared to :func:`numpy.histogram` and the existing
 :external+xhistogram:doc:`xhistogram <index>`. It also brings features such as
