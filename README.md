@@ -54,21 +54,6 @@ See the [accessor API](https://xarray-histogram.readthedocs.io/en/latest/_api/xa
 
 The [Unified Histogram Indexing](https://uhi.readthedocs.io/en/latest/indexing.html) could be implemented in the accessor, especially for the rebinning operations.
 
-## Dask support
-
-Dask arrays are supported for most use cases, however some features of Boost are not yet available:
-- Growing axes: Dask requires to know in advance the size of output chunks. This could reasonably be supported, at least when applying over the whole array (no looping dimensions).
-- Advanced storage: they make available various variables such as the variance. They require more than one number per bin, and a more complex sum of two histograms (possibly making histogram along chunked dimensions impossible). 
-
-## Requirements
-
-- Python >= 3.11
-- numpy
-- xarray
-- [boost-histogram](https://github.com/scikit-hep/boost-histogram)
-- [dask](https://www.dask.org/) (optional)
-- scipy (optional, for accessor)
-
 ## Documentation
 
 Documentation available at https://xarray-histogram.readthedocs.io
@@ -81,8 +66,24 @@ From source:
 ``` shell
 git clone https://github.com/Descanonge/xarray-histogram
 cd xarray-histogram
-pypi install -e .
+pip install -e .
 ```
+
+## TODO
+
+Some features of Boost are not yet available:
+- Over/underflow bins are not in the output DataArray, but accounted for internally by Boost and should be supported very soon.
+- Growing axes: Dask requires to know in advance the size of output chunks. This could reasonably be supported, at least when applying over the whole array (no looping dimensions).
+- Advanced storage/accumulators: they provide additional values on top of the count of samples falling into a bin. They require more than one number per bin, and a more complex sum of two histograms (possibly making histogram along chunked dimensions impossible). 
+
+## Requirements
+
+- Python >= 3.11
+- numpy
+- xarray
+- [boost-histogram](https://github.com/scikit-hep/boost-histogram)
+- [dask](https://www.dask.org/) (optional)
+- scipy (optional, for accessor)
 
 ## Tests and performance
 
@@ -92,4 +93,4 @@ To compare performances check these notebooks for [numpy](./docs/source/perf_num
 
 [xhistogram](https://xhistogram.readthedocs.io/en/latest/) already exists. It relies on Numpy functions and thus does not benefit of some performance upgrades brought by Boost (see performance comparisons).
 
-[dask-histogram](https://github.com/dask-contrib/dask-histogram) ports Boost-histogram for Dask. It does not support multi-dimensional arrays, but outputs boost objects directly rather than Dask arrays.
+[dask-histogram](https://github.com/dask-contrib/dask-histogram) ports Boost-histogram for Dask. It does not support multi-dimensional arrays, but outputs boost objects directly rather than Dask arrays so all features of Boost should be available.

@@ -1,6 +1,9 @@
 
+.. currentmodule:: xarray_histogram
+
+##############################
 XArray-Histogram documentation
-==============================
+##############################
 
 This package allow to compute histograms from and to XArray data. It relies on
 the :external+boost-histogram:doc:`Boost Histogram <index>` library giving
@@ -12,6 +15,17 @@ Dask arrays are supported.
 
 Vectorized manipulation and analysis of the resulting histogram(s) is provided
 via an XArray accessor.
+
+Installation
+============
+
+* Soon from PyPI ... 🚧
+
+* From source::
+
+   git clone https://github.com/Descanonge/xarray-histogram
+   cd xarray-histogram
+   pip install -e .
 
 .. toctree::
    :maxdepth: 2
@@ -25,6 +39,9 @@ via an XArray accessor.
    :maxdepth: 1
 
    api
+
+Links
+=====
 
 Source code: `<https://github.com/Descanonge/xarray-histogram>`__
 

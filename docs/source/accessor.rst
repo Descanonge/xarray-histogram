@@ -1,7 +1,8 @@
 .. currentmodule:: xarray_histogram
 
+********
 Accessor
-========
+********
 
 An :external+xarray:doc:`accessor <internals/extending-xarray>` is provided to
 ease manipulation and analysis of the histogram outputs. Simply import
@@ -26,10 +27,10 @@ we can compute one histogram per time-step::
     will be of dimensions ("time",)
 
 Computations
-------------
+============
 
 Bins
-++++
+----
 
 The accessor provides the bins edges as a DataArray of size N+1 (it includes the
 last bins right edge) for a given variable:
@@ -38,7 +39,7 @@ last bins right edge) for a given variable:
 and :meth:`~.HistDataArrayAccessor.areas`.
 
 Normalization
-+++++++++++++
+-------------
 
 .. important::
 
@@ -52,7 +53,7 @@ The histogram can be normalized if not already, using
 histogram, this function can normalize only some variables.
 
 Bins transform
-++++++++++++++
+--------------
 
 Arbitrary functions can be applied to bins with
 :meth:`~.HistDataArrayAccessor.apply_func`. The result is equivalent to
@@ -64,7 +65,7 @@ For instance, :meth:`~.HistDataArrayAccessor.scale` scales bins by a given
 factor. It essential does ``hist.apply_func(lambda edges: edges * factor)``
 
 Statistics
-++++++++++
+----------
 
 A number of statistics can be extracted from the histogram. The following
 functions are wrappers around methods of :class:`scipy.stats.rv_histogram`.
@@ -88,7 +89,7 @@ functions are wrappers around methods of :class:`scipy.stats.rv_histogram`.
 .. _accessor-conditions:
 
 Conditions of accessibility
----------------------------
+===========================
 
 Once registered, an accessor is a cached property that can be accessed on any
 DataArray. They are some conditions for the *hist* accessor to be created

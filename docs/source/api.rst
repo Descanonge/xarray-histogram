@@ -1,12 +1,13 @@
 .. currentmodule:: xarray_histogram
 
+*************
 API Reference
-=============
+*************
 
 .. automodule:: xarray_histogram
 
 Content
--------
+=======
 
 .. autosummary::
    :nosignatures:
@@ -15,8 +16,8 @@ Content
    ~core.histogram2d
    ~core.histogramdd
 
-Submodules
-----------
+Modules
+=======
 
 .. autosummary::
    :toctree: _api

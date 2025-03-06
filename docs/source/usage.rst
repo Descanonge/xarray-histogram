@@ -1,15 +1,16 @@
 
 .. currentmodule:: xarray_histogram
 
+*****
 Usage
-=====
+*****
 
 This package supplies functions similar to those of numpy:
 :func:`~core.histogram`, :func:`~core.histogram2d` and
 :func:`~core.histogramdd`.
 
 Input data
-----------
+==========
 
 The first parameters are the :class:`DataArray(s)<xarray.DataArray>` on which to
 compute the histogram. The function also accept an optional argument giving the
@@ -18,7 +19,7 @@ broadcastable against each other. For Dask arrays, chunks will be adapted using
 :func:`xarray.unify_chunks`.
 
 Bins / Axes
------------
+===========
 
 The bins can be specified by either:
 
@@ -63,7 +64,7 @@ Some basic examples of axis include::
    bha.Integer(0, 2, underflow=False, overflow=True)
 
 Output
-------
+======
 
 All three functions return a simple :class:`xarray.DataArray`. Its name is
 ``<variable names separated by underscores>_histogram`` (so for instance
