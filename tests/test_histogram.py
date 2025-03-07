@@ -16,8 +16,7 @@ import xarray as xr
 from numpy.testing import assert_allclose
 
 import xarray_histogram as xh
-
-from .util import bool_param, get_array, get_ref_hist, get_weights, id_data, id_x
+from tests.util import bool_param, get_array, get_ref_hist, get_weights, id_data, id_x
 
 np.random.seed(42)
 
