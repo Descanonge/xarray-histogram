@@ -61,6 +61,7 @@ class HistDataArrayAccessor:
                 f"No bins coordinates found in DataArray '{self._obj.name}'"
             )
         self._check_name()
+        self._check_bins()
 
         self._variable_type = str(self._obj.name).split("_")[-1]
 
@@ -120,7 +121,7 @@ class HistDataArrayAccessor:
                         f"Cannot infer right edge: bins for {var} "
                         "are not regularly spaced."
                     )
-                c.attrs["right_edge"] = (c[-1] + c[0]).values.item()
+                c.attrs["right_edge"] = (c[-1] + diff[0]).values.item()
 
     def is_normalized(self) -> bool:
         """Whether the histogram is normalized (based on the array name)."""
