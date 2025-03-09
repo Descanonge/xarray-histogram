@@ -166,12 +166,14 @@ class HistDataArrayAccessor:
         variable = self._variable(variable)
         return self.edges(variable).diff(self._dim(variable))
 
-    def areas(self) -> xr.DataArray:
+    def areas(self, variables: abc.Sequence[str] | None = None) -> xr.DataArray:
         """Return the areas of the bins.
 
         The product of the widths of all bins.
         """
-        return reduce(operator.mul, (self.widths(var) for var in self.variables))
+        if variables is None:
+            variables = self.variables
+        return reduce(operator.mul, (self.widths(var) for var in variables))
 
     def normalize(
         self, variables: str | abc.Sequence[str] | None = None
@@ -194,17 +196,8 @@ class HistDataArrayAccessor:
         elif isinstance(variables, str):
             variables = [variables]
 
-        widths = [self.widths(var) for var in variables]
         dims = [self._dim(var) for var in variables]
-        if len(variables) == 1:
-            area = widths[0]
-        elif len(variables) == 2:  # noqa: PLR2004
-            area = np.outer(*widths)  # type: ignore
-        else:
-            area = np.prod(np.ix_(*widths))
-
-        area_xr = xr.DataArray(area, dims=dims)
-        output = hist / area_xr / hist.sum(dims)
+        output = hist / self.areas(variables) / hist.sum(dims)
         output = output.rename("_".join(variables) + "_pdf")
         return output
 
