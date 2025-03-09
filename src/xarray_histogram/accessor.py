@@ -155,8 +155,11 @@ class HistDataArrayAccessor:
 
     def centers(self, variable: str | None = None) -> xr.DataArray:
         """Return the center of all bins."""
-        edges = self.edges(variable)
-        return (edges[:-1] + edges[1:]) / 2.0
+        variable = self._variable(variable)
+        dim = self._dim(variable)
+        return (
+            self.edges(variable).rolling({dim: 2}, center=True).sum().dropna(dim) / 2.0
+        )
 
     def widths(self, variable: str | None = None) -> xr.DataArray:
         """Return the width of all bins."""
