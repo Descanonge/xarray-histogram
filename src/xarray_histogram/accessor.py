@@ -164,7 +164,7 @@ class HistDataArrayAccessor:
     def widths(self, variable: str | None = None) -> xr.DataArray:
         """Return the width of all bins."""
         variable = self._variable(variable)
-        return self.edges(variable).diff(self._dim(variable))
+        return self.edges(variable).diff(self._dim(variable), label="lower")
 
     def areas(self, variables: abc.Sequence[str] | None = None) -> xr.DataArray:
         """Return the areas of the bins.

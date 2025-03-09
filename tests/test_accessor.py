@@ -132,5 +132,15 @@ class TestTransformBins:
         assert_allclose(h2.hist.edges("var2"), h.hist.edges("var2"))
 
 
+def test_normalization():
+    x = get_array([50], name="var1")
+    y = get_array([50], name="var2")
+    z = get_array([50], name="var3")
+    h = xh.histogramdd(x, y, z, range=[(0, 1)] * 3, density=False)
+    h = h.hist.normalize()
+    ref = xh.histogramdd(x, y, z, range=[(0, 1)] * 3, density=True)
+    assert_allclose(h, ref)
+
+
 class TestStatistics:
     pass

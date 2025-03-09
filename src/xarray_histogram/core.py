@@ -301,7 +301,7 @@ def histogramdd(
             xr.DataArray(np.diff(b.edges), dims=[name])
             for b, name in zip(axes, bins_names, strict=True)
         ]
-        areas = xr.DataArray(reduce(operator.mul, widths), dims=bins_names)
+        areas = reduce(operator.mul, widths)
         hist = hist / areas / hist.sum(bins_names)
 
     hist_name = "pdf" if density else "histogram"
