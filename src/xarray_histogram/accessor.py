@@ -137,6 +137,10 @@ class HistDataArrayAccessor:
             if len(self.variables) == 1:
                 return self.variables[0]
             raise TypeError("A variable must be given.")
+        if var not in self.variables:
+            raise KeyError(
+                f"'{var}' is not among the histogram variables ({self.variables})"
+            )
         return var
 
     def edges(self, variable: str | None = None) -> xr.DataArray:
