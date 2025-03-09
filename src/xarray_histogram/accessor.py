@@ -149,7 +149,7 @@ class HistDataArrayAccessor:
         dim = self._dim(variable)
         coord = self._obj.coords[dim]
         re = coord.attrs["right_edge"]
-        re_xr = xr.DataArray(re, dims=[dim], coords={dim: [re]})
+        re_xr = xr.DataArray([re], dims=[dim], coords={dim: [re]})
         full = xr.concat([coord, re_xr], dim=dim)
         return full
 
