@@ -2,6 +2,7 @@
 
 from functools import reduce
 
+import boost_histogram as bh
 import numpy as np
 import pytest
 import xarray as xr
@@ -143,4 +144,32 @@ def test_normalization():
 
 
 class TestStatistics:
-    pass
+    ax = bh.axis.Regular(30, 0.0, 10.0)
+
+    @property
+    def tol(self) -> float:
+        """We take tolerance as half the bins width."""
+        return (self.ax.edges[-1] - self.ax.edges[0]) / self.ax.size / 2
+
+    def get_values(self):
+        rng = np.random.default_rng(seed=42)
+        out = xr.DataArray(rng.normal(loc=5.0, size=100), dims=["x"], name="var")
+        return out
+
+    def get_hist(self, values: xr.DataArray) -> xr.DataArray:
+        return xh.histogram(values, bins=self.ax)
+
+    def test_median(self):
+        values = self.get_values()
+        hist = self.get_hist(values)
+        assert np.isclose(hist.hist.median(), np.median(values), atol=self.tol)
+
+    def test_mean(self):
+        values = self.get_values()
+        hist = self.get_hist(values)
+        assert np.isclose(hist.hist.mean(), np.mean(values), atol=self.tol)
+
+    def test_var(self):
+        values = self.get_values()
+        hist = self.get_hist(values)
+        assert np.isclose(hist.hist.var(), np.var(values), atol=self.tol)
