@@ -369,3 +369,7 @@ class TestMultivariate:
         ref = get_ref_hist(x, y, axes=axes)
 
         assert_allclose(hist.to_numpy(), ref, atol=1, rtol=1e-6)
+
+
+class TestFlowBins:
+    pass

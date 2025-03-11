@@ -63,6 +63,21 @@ Some basic examples of axis include::
    # boolean
    bha.Integer(0, 2, underflow=False, overflow=True)
 
+Over/underflow
+==============
+
+By default, Boost axes are configured to keep count of the data points that
+fall outside their range. Pass ``underflow=False`` and/or ``overflow=False``
+when creating an axis to disable this.
+Still by default, the flow bins values are not kept in the output array.
+
+To keep the flow bins, pass ``flow=True`` to the histogram functions. The
+coordinates values for the underflow and overflow bins will be set to
+
+- for a float variable: :data:`-np.inf<numpy.inf>` and :data:`np.inf<numpy.inf>`
+- for an integer variable: the minimum and maximum values of the dtype
+
+
 Output
 ======
 

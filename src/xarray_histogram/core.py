@@ -55,6 +55,7 @@ def histogram(
     weights: xr.DataArray | None = None,
     density: bool = False,
     dims: abc.Collection[abc.Hashable] | None = None,
+    flow: bool = False,
     storage: bh.storage.Storage | None = None,
 ) -> xr.DataArray:
     """Compute histogram of a single variable.
@@ -85,6 +86,8 @@ def histogram(
     dims
         Dimensions to compute the histogram along to. If left to None the data is
         flattened along all axes.
+    flow
+        If True, include flow bins in the output.
     storage: ~boost_histogram.storage.Storage
         Storage object used by the histogram. If None, the default one is used
         (:external+boost-histogram:ref:`/user-guide/storage.rst#double`). Currently,
@@ -103,6 +106,7 @@ def histogram(
         weights=weights,
         density=density,
         dims=dims,
+        flow=flow,
         storage=storage,
     )
 
@@ -116,6 +120,7 @@ def histogram2d(
     weights: xr.DataArray | None = None,
     density: bool = False,
     dims: abc.Collection[abc.Hashable] | None = None,
+    flow: bool = False,
     storage: bh.storage.Storage | None = None,
 ) -> xr.DataArray:
     """Compute 2-dimensional histogram.
@@ -152,6 +157,8 @@ def histogram2d(
     dims
         Dimensions to compute the histogram along to. If left to None the data is
         flattened along all axes.
+    flow
+        If True, include flow bins in the output.
     storage: ~boost_histogram.storage.Storage
         Storage object used by the histogram. If None, the default one is used
         (:external+boost-histogram:ref:`/user-guide/storage.rst#double`). Currently,
@@ -171,6 +178,7 @@ def histogram2d(
         weights=weights,
         density=density,
         dims=dims,
+        flow=flow,
         storage=storage,
     )
 
@@ -182,6 +190,7 @@ def histogramdd(
     weights: xr.DataArray | None = None,
     density: bool = False,
     dims: abc.Collection[abc.Hashable] | None = None,
+    flow: bool = False,
     storage: bh.storage.Storage | None = None,
 ) -> xr.DataArray:
     """Compute N-dimensional histogram.
@@ -221,6 +230,8 @@ def histogramdd(
     dims
         Dimensions to compute the histogram along to. If left to None the data is
         flattened along all axes.
+    flow
+        If True, include flow bins in the output.
     storage: ~boost_histogram.storage.Storage
         Storage object used by the histogram. If None, the default one is used
         (:external+boost-histogram:ref:`/user-guide/storage.rst#double`). Currently,
@@ -276,6 +287,7 @@ def histogramdd(
             axis_loop=axis_loop,
             axis_agg=axis_agg,
             weight=weights is not None,
+            flow=flow,
             histref=histref,
         )
 
@@ -288,11 +300,11 @@ def histogramdd(
             input_core_dims=[list(dims) for _ in data],
             output_core_dims=[bins_names],
             vectorize=True,
-            kwargs=dict(weight=weights is not None, histref=histref),
+            kwargs=dict(weight=weights is not None, flow=flow, histref=histref),
         ).rename(VAR_HIST)
 
-    for bins_name, ax in zip(bins_names, axes, strict=True):
-        edges = get_edges(ax)
+    for bins_name, a, ax in zip(bins_names, data, axes, strict=False):
+        edges = get_edges(ax, a.dtype, flow)
         hist = hist.assign_coords({bins_name: edges[:-1]})
         hist[bins_name].attrs["right_edge"] = edges[-1]
 
@@ -309,14 +321,22 @@ def histogramdd(
     return hist
 
 
-def get_edges(ax: bh.axis.Axis) -> NDArray:
+def get_edges(ax: bh.axis.Axis, dtype: np.dtype, flow: bool) -> NDArray:
     """Get edges of a given axis as a numpy array."""
     edges = ax.edges
 
+    if flow:
+        if ax.traits.underflow:
+            edges = np.concatenate(([-np.inf], edges))
+        if ax.traits.overflow:
+            edges = np.concatenate((edges, [np.inf]))
+
     if isinstance(ax, bh.axis.Integer):
-        return edges.astype("int")
+        return edges.astype(dtype)
 
     if isinstance(ax, bh.axis.IntCategory):
+        if flow:
+            raise NotImplementedError
         bins = [cast(int, ax.bin(i)) for i in range(ax.size)]
         bins.append(bins[-1] + 1)  # right edge, not really applicable here though
         return np.asarray(bins)
@@ -324,14 +344,24 @@ def get_edges(ax: bh.axis.Axis) -> NDArray:
     return edges
 
 
+def get_shape(histref: bh.Histogram, flow: bool) -> tuple[int, ...]:
+    if flow:
+        return histref.axes.extent
+    return histref.shape
+
+
 def _clone(histref: bh.Histogram) -> bh.Histogram:
     return bh.Histogram(*histref.axes, storage=histref.storage_type())
 
 
 def _blocked_dd(
-    *data: NDArray, weight: bool, histref: bh.Histogram, keepdims: bool = False
+    *data: NDArray,
+    weight: bool,
+    flow: bool,
+    histref: bh.Histogram,
+    keepdims: bool = False,
 ) -> NDArray:
-    """Multiple variables, ND arrays.
+    """Compute histogram on whole arrays.
 
     Arrays are already broadcasted.
     """
@@ -345,7 +375,7 @@ def _blocked_dd(
     else:
         thehist.fill(*flattened)
 
-    counts = thehist.values()
+    counts = thehist.values(flow)
 
     if keepdims:
         counts = np.expand_dims(counts, tuple(_range(data[0].ndim)))
@@ -358,10 +388,11 @@ def _blocked_dd_loop(
     axis_agg: abc.Sequence[int],
     axis_loop: abc.Sequence[int],
     weight: bool,
+    flow: bool,
     histref: bh.Histogram,
     keepdims: bool = False,
 ) -> NDArray:
-    """Multiple variables, ND arrays.
+    """Compute multiple histograms on looping axis.
 
     Arrays are already broadcasted.
     """
@@ -379,7 +410,7 @@ def _blocked_dd_loop(
     n_loop = reduce(operator.mul, shape_loop)
     flattened = [np.reshape(a, (n_loop, n_agg)) for a in ordered]
 
-    counts = np.zeros((n_loop, *histref.shape))
+    counts = np.zeros((n_loop, *get_shape(histref, flow)))
     for i in range(n_loop):
         thehist = _clone(histref)
         if weight:
@@ -388,10 +419,9 @@ def _blocked_dd_loop(
         else:
             thehist.fill(*[a[i] for a in flattened])
 
-        # TODO: take care of flow
-        counts[i] = thehist.values()
+        counts[i] = thehist.values(flow)
 
-    counts = np.reshape(counts, (*shape_loop, *histref.shape))
+    counts = np.reshape(counts, (*shape_loop, *get_shape(histref, flow)))
     if keepdims:
         counts = np.expand_dims(
             counts, tuple(_range(len(axis_loop), len(axis_loop) + len(axis_agg)))
@@ -405,6 +435,7 @@ def _histogram_dask(
     axis_loop: abc.Sequence[int],
     axis_agg: abc.Sequence[int],
     weight: bool,
+    flow: bool,
     histref: bh.Histogram,
 ) -> da.Array:
     """Compute histogram for dask data."""
@@ -414,10 +445,11 @@ def _histogram_dask(
             axis_loop=axis_loop,
             axis_agg=axis_agg,
             weight=weight,
+            flow=flow,
             histref=histref,
         )
     else:
-        func = partial(_blocked_dd, weight=weight, histref=histref)
+        func = partial(_blocked_dd, weight=weight, flow=flow, histref=histref)
 
     dtype = (
         int
@@ -435,7 +467,7 @@ def _histogram_dask(
         chunks=(
             *[data[0].chunks[i][0] for i in axis_loop],
             *[1 for _ in axis_agg],
-            *histref.shape,
+            *get_shape(histref, flow),
         ),
         new_axis=[data[0].ndim + i for i in range(histref.ndim)],
         enforce_ndim=True,
