@@ -62,7 +62,11 @@ Documentation available at https://xarray-histogram.readthedocs.io
 
 ## Installation
 
-Soon from PyPI ... 🚧
+From PyPI:
+
+``` shell
+pip install xarray-histogram
+```
 
 From source:
 ``` shell

@@ -30,10 +30,16 @@ classifiers = [
 ]
 
 dependencies = [
+    'boost-histogram',
+    'numpy',
     'xarray',
 ]
 
 [project.optional-dependencies]
+full = [
+     'dask'
+     'scipy',
+]
 dev = [
     'dask',
     'scipy',
@@ -42,7 +48,6 @@ dev = [
     'ruff',
     'mypy>=1.5',
     'pytest>=7.4',
-    'hypothesis',
     'coverage',
     'pytest-cov'
 ]
