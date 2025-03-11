@@ -32,13 +32,13 @@ classifiers = [
 dependencies = [
     'boost-histogram',
     'numpy',
-    'xarray',
+    'xarray'
 ]
 
 [project.optional-dependencies]
 full = [
-     'dask'
-     'scipy',
+     'dask',
+     'scipy'
 ]
 dev = [
     'dask',
