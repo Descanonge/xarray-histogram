@@ -35,6 +35,8 @@ Installation
 
    accessor
 
+   performances
+
 .. toctree::
    :maxdepth: 1
 

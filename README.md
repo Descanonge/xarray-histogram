@@ -77,8 +77,7 @@ Some features of Boost are not yet available:
 - Over/underflow bins are not in the output DataArray, but accounted for internally by Boost and should be supported very soon.
 - Growing axes: Dask requires to know in advance the size of output chunks. This could reasonably be supported, at least when applying over the whole array (no looping dimensions).
 - Advanced storage/accumulators: they provide additional values on top of the count of samples falling into a bin. They require more than one number per bin, and a more complex sum of two histograms (possibly making histogram along chunked dimensions impossible). 
-
-The [Unified Histogram Indexing](https://uhi.readthedocs.io/en/latest/indexing.html) could be implemented in the accessor to facilitate manipulation of histogram arrays.
+- The [Unified Histogram Indexing](https://uhi.readthedocs.io/en/latest/indexing.html) could be implemented in the accessor to facilitate manipulation of histogram arrays.
 
 ## Requirements
 
@@ -91,10 +90,10 @@ The [Unified Histogram Indexing](https://uhi.readthedocs.io/en/latest/indexing.h
 
 ## Tests and performance
 
-To compare performances check these notebooks for [numpy](./docs/source/perf_numpy.ipynb) and [dask](./docs/source/perf_dask.ipynb) arrays.
+To compare performances check this [notebook](./docs/source/performances.ipynb).
 
 ## Other packages
 
-[xhistogram](https://xhistogram.readthedocs.io/en/latest/) already exists. It relies on Numpy functions and thus does not benefit of some performance upgrades brought by Boost (see performance comparisons).
+[xhistogram](https://xhistogram.readthedocs.io/en/latest/) already exists. It relies on Numpy functions ([searchsorted](https://numpy.org/doc/stable/reference/generated/numpy.searchsorted.html)) and thus does not benefit of some performance upgrades brought by Boost (see performance comparisons).
 
-[dask-histogram](https://github.com/dask-contrib/dask-histogram) ports Boost-histogram for Dask. It does not support multi-dimensional arrays, but outputs boost objects directly rather than Dask arrays so all features of Boost should be available.
+[dask-histogram](https://github.com/dask-contrib/dask-histogram) ports Boost-histogram for Dask. It does not support multi-dimensional arrays: one can still reshape the input array but this can incur [performance penalties](https://docs.dask.org/en/stable/array-chunks.html#reshaping). Still, as it works directly with boost objects rather than Dask arrays all features of Boost should be available.

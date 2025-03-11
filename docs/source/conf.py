@@ -25,6 +25,7 @@ pygments_style = "default"
 nitpicky = True
 
 extensions = [
+    "nbsphinx",
     "sphinx.ext.intersphinx",
     "sphinx.ext.autodoc",
     "sphinx.ext.autosummary",
@@ -61,6 +62,9 @@ intersphinx_mapping = {
     "dask-histogram": ("https://dask-histogram.readthedocs.io/en/stable", None),
     "scipy": ("https://docs.scipy.org/doc/scipy", None),
 }
+
+# nbsphinx config
+nbsphinx_execute = "never"
 
 ## HTML Output
 

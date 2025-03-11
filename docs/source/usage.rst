@@ -48,7 +48,7 @@ supported. Instead, use a
    Using regularly spaced bins (even with a
    :external+boost-histogram:ref:`transform
    </user-guide/axes.rst#regular-axis-transforms>` applied) is more efficient:
-   it avoids having to use dichotomy to find in which bin a value falls.
+   it avoids having to use binary search to find in which bin a value falls.
 
 Some basic examples of axis include::
 
