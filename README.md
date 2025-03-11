@@ -3,8 +3,17 @@
 
 > Compute and manipulate histograms from XArray data using BoostHistogram
 
+<div align="left">
+
+[![PyPI](https://img.shields.io/pypi/v/xarray-histogram)](https://pypi.org/project/xarray-histogram)
+[![GitHub release](https://img.shields.io/github/v/release/Descanonge/xarray-histogram)](https://github.com/Descanonge/xarray-histogram/releases)
+![test status](https://github.com/Descanonge/xarray-histogram/actions/workflows/tests.yml/badge.svg)
+[![Documentation Status](https://readthedocs.org/projects/xarray-histogram/badge/?version=latest)](https://xarray-histogram.readthedocs.io/en/latest/?badge=latest)
+
+</div>
+
 This package allows to compute histograms from and to XArray data.
-It relies on the [Boost Histogram](https://boost-histogram.readthedocs.io) library giving better performances compared to Numpy.histogram and the existing [xhistogram](https://xhistogram.readthedocs.io/en/latest/).
+It relies on the [Boost Histogram](https://boost-histogram.readthedocs.io) library giving better performances compared to `numpy.histogram` and the existing [xhistogram](https://xhistogram.readthedocs.io/en/latest/).
 It also brings features such as integer/discrete bins or periodic bins.
 
 Dask arrays are supported.
