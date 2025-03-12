@@ -1,4 +1,5 @@
 
+- Fix right edge for bool dtype
 - Fix: Add looping coordinates to output for Dask data
 
 ### 0.1.1

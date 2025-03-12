@@ -337,6 +337,8 @@ def get_edges(ax: bh.axis.Axis, dtype: np.dtype, flow: bool) -> NDArray:
             edges = np.concatenate((edges, [np.inf]))
 
     if isinstance(ax, bh.axis.Integer):
+        if np.isdtype(dtype, "bool"):
+            dtype = np.dtype("int")
         return edges.astype(dtype)
 
     if isinstance(ax, bh.axis.IntCategory):
