@@ -291,7 +291,12 @@ def histogramdd(
             histref=histref,
         )
 
-        hist = xr.DataArray(counts, dims=dims_loop + bins_names, name=VAR_HIST)
+        hist = xr.DataArray(
+            counts,
+            dims=dims_loop + bins_names,
+            coords={d: data[0].coords[d] for d in dims_loop},
+            name=VAR_HIST,
+        )
 
     else:
         hist = xr.apply_ufunc(

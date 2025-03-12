@@ -1,5 +1,9 @@
 
-- [2022-07-05] Fix nd-histogram from dask arrays
+- Fix: Add looping coordinates to output for Dask data
 
-### 0.0.1
+### 0.1.1
+
+- Fix publication
+
+## 0.1.0
 
