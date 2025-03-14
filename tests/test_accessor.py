@@ -24,6 +24,7 @@ def get_blank_histogram(n_var: int = 1) -> xr.DataArray:
     )
     for b in bins:
         h[b].attrs["right_edge"] = 10
+        h[b].attrs["bin_type"] = "Regular"
 
     return h
 
@@ -99,6 +100,7 @@ class TestEdges:
         bins2 = np.linspace(0, 1, 11)  # width 0.1
         h = h.assign_coords(var2_bins=bins2[:-1])
         h.var2_bins.attrs["right_edge"] = bins2[-1]
+        h.var2_bins.attrs["bin_type"] = "Regular"
         # width2 = np.full((10,), 0.1)
         width2 = np.diff(bins2)
         assert_allclose(h.hist.edges("var2"), bins2)
@@ -107,6 +109,7 @@ class TestEdges:
         bins3 = np.logspace(0.1, 1, 11)
         h = h.assign_coords(var3_bins=bins3[:-1])
         h.var3_bins.attrs["right_edge"] = bins3[-1]
+        h.var3_bins.attrs["bin_type"] = "Variable"
         width3 = np.diff(bins3)
         assert_allclose(h.hist.edges("var3"), bins3)
         assert_allclose(h.hist.widths("var3"), width3)

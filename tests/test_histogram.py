@@ -18,8 +18,6 @@ from numpy.testing import assert_allclose
 import xarray_histogram as xh
 from tests.util import bool_param, get_array, get_ref_hist, get_weights, id_data, id_x
 
-np.random.seed(42)
-
 
 class TestBinsInput:
     """Check input bins are correctly handled."""
@@ -83,18 +81,80 @@ class TestCoordinates:
 
         coord = hist["var1_bins"]
         assert coord.size == ax.size
-        assert np.isdtype(coord.dtype, kind="real floating")
+        assert coord.dtype == x.dtype
+        assert coord.attrs["bin_type"] == "Regular"
         assert coord.attrs["right_edge"] == 1.0
+        assert coord.attrs["underflow"] is False
+        assert coord.attrs["overflow"] is False
+        assert_allclose(coord, ax.edges[:-1])
+
+        # with flow
+        hist = xh.histogram(x, ax, flow=True)
+
+        coord = hist["var1_bins"]
+        assert coord.size == ax.extent
+        assert coord.dtype == x.dtype
+        assert coord.attrs["bin_type"] == "Regular"
+        assert coord.attrs["right_edge"] == 1.0
+        assert coord.attrs["underflow"] is True
+        assert coord.attrs["overflow"] is True
+        assert_allclose(coord[1:-1], ax.edges[:-1])
+        assert coord[0] == -np.inf
+        assert coord[-1] == np.inf
 
     def test_coordinate_int(self):
         ax = bh.axis.Integer(0, 5)
-        x = get_array([20]).astype("int")
+        dt = np.dtype("int16")
+        x = get_array([20]).astype(dt)
         hist = xh.histogram(x, ax)
 
         coord = hist["var1_bins"]
         assert coord.size == ax.size
-        assert np.isdtype(coord.dtype, kind="signed integer")
-        assert coord.attrs["right_edge"] == 5
+        assert coord.dtype == dt
+        assert coord.attrs["bin_type"] == "Integer"
+        assert coord.attrs["underflow"] is False
+        assert coord.attrs["overflow"] is False
+        assert_allclose(coord, ax.edges[:-1])
+
+        # with flow
+        hist = xh.histogram(x, ax, flow=True)
+
+        coord = hist["var1_bins"]
+        assert coord.size == ax.extent
+        assert coord.dtype == dt
+        assert coord.attrs["bin_type"] == "Integer"
+        assert coord.attrs["underflow"] is True
+        assert coord.attrs["overflow"] is True
+        assert_allclose(coord[1:-1], ax.edges[:-1])
+        assert coord[0] == np.iinfo(dt).min
+        assert coord[-1] == np.iinfo(dt).max
+
+    def test_coordinate_uint(self):
+        ax = bh.axis.Integer(0, 5)
+        dt = np.dtype("uint16")
+        x = get_array([20]).astype(dt)
+        hist = xh.histogram(x, ax)
+
+        coord = hist["var1_bins"]
+        assert coord.size == ax.size
+        assert coord.dtype == dt
+        assert coord.attrs["bin_type"] == "Integer"
+        assert coord.attrs["underflow"] is False
+        assert coord.attrs["overflow"] is False
+        assert_allclose(coord, ax.edges[:-1])
+
+        # with flow
+        hist = xh.histogram(x, ax, flow=True)
+        dt_target = np.dtype("int32")
+
+        coord = hist["var1_bins"]
+        assert coord.size == ax.extent
+        assert coord.dtype == dt_target
+        assert coord.attrs["bin_type"] == "Integer"
+        assert coord.attrs["underflow"] is True
+        assert coord.attrs["overflow"] is True
+        assert_allclose(coord[1:-1], ax.edges[:-1])
+        assert coord[-1] == np.iinfo(dt_target).max
 
     def test_coordinate_int_category(self):
         ax = bh.axis.IntCategory([2, 5, 8, 7])
@@ -104,8 +164,22 @@ class TestCoordinates:
         coord = hist["var1_bins"]
         assert coord.size == ax.size
         assert np.isdtype(coord.dtype, kind="signed integer")
-        assert (coord == [2, 5, 8, 7]).all()
-        assert coord.attrs["right_edge"] == 8
+        assert coord.attrs["bin_type"] == "IntCategory"
+        assert coord.attrs["underflow"] is False
+        assert coord.attrs["overflow"] is False
+        assert_allclose(coord, [2, 5, 8, 7])
+
+        # with flow
+        hist = xh.histogram(x, ax, flow=True)
+
+        coord = hist["var1_bins"]
+        assert coord.size == ax.extent
+        assert np.isdtype(coord.dtype, kind="signed integer")
+        assert coord.attrs["bin_type"] == "IntCategory"
+        assert coord.attrs["underflow"] is False
+        assert coord.attrs["overflow"] is True
+        assert_allclose(coord[:-1], [2, 5, 8, 7])
+        assert coord[-1] == np.iinfo(x.dtype).max
 
 
 class TestUnivariate:

@@ -13,6 +13,8 @@ import numpy as np
 import xarray as xr
 from scipy.stats import rv_histogram
 
+from .core import _bins_name, get_area, get_edges, get_widths, normalize
+
 
 @xr.register_dataarray_accessor("hist")
 class HistDataArrayAccessor:
@@ -45,8 +47,8 @@ class HistDataArrayAccessor:
     """
 
     _VALID_TYPES: list[str] = ["histogram", "pdf"]
-    _variables: list[str]
     _variable_type: str
+    variables: list[str]
 
     def __init__(self, obj: xr.DataArray) -> None:
         self._obj = obj
@@ -110,26 +112,24 @@ class HistDataArrayAccessor:
         """
         obj = self._obj
         for var in self.variables:
-            bin_dim = self._dim(var)
+            bin_dim = _bins_name(var)
             if bin_dim not in obj.dims or bin_dim not in obj.coords:
                 raise KeyError(f"No bin coordinates '{bin_dim}'")
             c = obj.coords[bin_dim]
-            if "right_edge" not in c.attrs:
+            # Default is Regular
+            if "bin_type" not in c.attrs and "right_edge" not in c.attrs:
                 diff = np.diff(c)
                 if not np.allclose(diff, diff[0]):
                     raise ValueError(
                         f"Cannot infer right edge: bins for {var} "
                         "are not regularly spaced."
                     )
+                c.attrs["bin_type"] = "Regular"
                 c.attrs["right_edge"] = (c[-1] + diff[0]).values.item()
 
     def is_normalized(self) -> bool:
         """Whether the histogram is normalized (based on the array name)."""
         return self._variable_type == "pdf"
-
-    def _dim(self, variable: str) -> str:
-        """Transform a variable name to its corresponding dimension."""
-        return f"{variable}_bins"
 
     def _variable(self, var: str | None) -> str:
         """Return variable argument."""
@@ -146,17 +146,14 @@ class HistDataArrayAccessor:
     def edges(self, variable: str | None = None) -> xr.DataArray:
         """Return the edges of the bins (including the right most edge)."""
         variable = self._variable(variable)
-        dim = self._dim(variable)
+        dim = _bins_name(variable)
         coord = self._obj.coords[dim]
-        re = coord.attrs["right_edge"]
-        re_xr = xr.DataArray([re], dims=[dim], coords={dim: [re]})
-        full = xr.concat([coord, re_xr], dim=dim)
-        return full
+        return get_edges(coord)
 
     def centers(self, variable: str | None = None) -> xr.DataArray:
         """Return the center of all bins."""
         variable = self._variable(variable)
-        dim = self._dim(variable)
+        dim = _bins_name(variable)
         return (
             self.edges(variable).rolling({dim: 2}, center=True).sum().dropna(dim) / 2.0
         )
@@ -164,7 +161,9 @@ class HistDataArrayAccessor:
     def widths(self, variable: str | None = None) -> xr.DataArray:
         """Return the width of all bins."""
         variable = self._variable(variable)
-        return self.edges(variable).diff(self._dim(variable), label="lower")
+        dim = _bins_name(variable)
+        coord = self._obj.coords[dim]
+        return get_widths(coord)
 
     def areas(self, variables: abc.Sequence[str] | None = None) -> xr.DataArray:
         """Return the areas of the bins.
@@ -173,7 +172,7 @@ class HistDataArrayAccessor:
         """
         if variables is None:
             variables = self.variables
-        return reduce(operator.mul, (self.widths(var) for var in variables))
+        return get_area(self._obj, [_bins_name(v) for v in variables])
 
     def normalize(
         self, variables: str | abc.Sequence[str] | None = None
@@ -187,18 +186,18 @@ class HistDataArrayAccessor:
         variables
             The variable(s), ie dimensions, along which to normalize.
         """
-        hist = self._obj
         if self._variable_type == "pdf":
-            raise TypeError(f"'{hist.name}' already normalized.")
+            raise TypeError(f"'{self._obj.name}' already normalized.")
 
         if variables is None:
             variables = self.variables
         elif isinstance(variables, str):
             variables = [variables]
 
-        dims = [self._dim(var) for var in variables]
-        output = hist / self.areas(variables) / hist.sum(dims)
-        output = output.rename("_".join(variables) + "_pdf")
+        bins_all = [_bins_name(var) for var in self.variables]
+        bins_normalize = [_bins_name(var) for var in variables]
+        output = normalize(self._obj, bins_all, bins_normalize)
+        output = output.rename("_".join(self.variables) + "_pdf")
         return output
 
     def apply_func(
@@ -221,11 +220,31 @@ class HistDataArrayAccessor:
             Passed to the function.
         """
         variable = self._variable(variable)
-        dim = self._dim(variable)
+        dim = _bins_name(variable)
+
+        coord = self._obj.coords[dim]
         edges = self.edges(variable)
-        new_edges = func(edges, **kwargs)
-        new_edges.attrs["right_edge"] = new_edges[-1]
-        return self._obj.assign_coords({dim: new_edges[:-1]})
+
+        # save flow bins coordinates
+        underflow = edges.attrs.get("underflow", False)
+        overflow = edges.attrs.get("overflow", False)
+        slc = slice(1 if underflow else 0, -1 if overflow else None)
+        underflow_bin = edges[0]
+        overflow_bin = edges[-1]
+
+        edges = edges[slc]
+        new_edges = func(edges[slc], **kwargs)
+
+        new_coord = new_edges[:-1]
+        if underflow:
+            new_coord = xr.concat([underflow_bin, new_coord], dim=dim)
+        if overflow:
+            new_coord = xr.concat([new_coord, overflow_bin], dim=dim)
+
+        new_coord.attrs.update(coord.attrs)
+        new_coord.attrs["right_edge"] = (new_edges[-1]).values.item()
+
+        return self._obj.assign_coords({dim: new_coord})
 
     def scale(self, factor: float, variable: str | None = None) -> xr.DataArray:
         """Transform a bins coordinate by scaling it.
@@ -256,7 +275,7 @@ class HistDataArrayAccessor:
             Passed to the function.
         """
         variable = self._variable(variable)
-        dim = self._dim(variable)
+        dim = _bins_name(variable)
         bins = self.edges(variable)
         density = self.is_normalized()
 

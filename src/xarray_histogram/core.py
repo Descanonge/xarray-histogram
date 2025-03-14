@@ -244,8 +244,8 @@ def histogramdd(
         DataArray named ``<variables names separated by an underscore>_histogram``. The
         bins coordinates are named ``<variable name>_bins``.
     """
-    variables = [a.name for a in data]
-    bins_names = [f"{v}_bins" for v in variables]
+    variables = [str(a.name) for a in data]
+    bins_names = [_bins_name(str(v)) for v in variables]
     axes = get_axes_from_specs(bins, range, data)
 
     if storage is None:
@@ -279,6 +279,12 @@ def histogramdd(
     dims = [d for d in data_dims if d in dims]
     dims_loop = [d for d in data_dims if d not in dims]
 
+    # create coordinates
+    coords = {
+        bins_name: get_coord(bins_name, ax, a.dtype, flow)
+        for bins_name, a, ax in zip(bins_names, data, axes, strict=False)
+    }
+
     if is_dask:
         axis_loop = [data_dims.index(d) for d in dims_loop]
         axis_agg = [data_dims.index(d) for d in dims]
@@ -308,56 +314,25 @@ def histogramdd(
             kwargs=dict(weight=weights is not None, flow=flow, histref=histref),
         ).rename(VAR_HIST)
 
-    for bins_name, a, ax in zip(bins_names, data, axes, strict=False):
-        edges = get_edges(ax, a.dtype, flow)
-        hist = hist.assign_coords({bins_name: edges[:-1]})
-        hist[bins_name].attrs["right_edge"] = edges[-1]
+    hist = hist.assign_coords(coords)
 
     if density:
-        widths = [
-            xr.DataArray(np.diff(b.edges), dims=[name])
-            for b, name in zip(axes, bins_names, strict=True)
-        ]
-        areas = reduce(operator.mul, widths)
-        hist = hist / areas / hist.sum(bins_names)
+        hist = normalize(hist, bins_names, bins_names)
 
     hist_name = "pdf" if density else "histogram"
     hist = hist.rename("_".join(map(str, variables + [hist_name])))
     return hist
 
 
-def get_edges(ax: bh.axis.Axis, dtype: np.dtype, flow: bool) -> NDArray:
-    """Get edges of a given axis as a numpy array."""
-    edges = ax.edges
-
-    if flow:
-        if ax.traits.underflow:
-            edges = np.concatenate(([-np.inf], edges))
-        if ax.traits.overflow:
-            edges = np.concatenate((edges, [np.inf]))
-
-    if isinstance(ax, bh.axis.Integer):
-        if np.isdtype(dtype, "bool"):
-            dtype = np.dtype("int")
-        return edges.astype(dtype)
-
-    if isinstance(ax, bh.axis.IntCategory):
-        if flow:
-            raise NotImplementedError
-        bins = [cast(int, ax.bin(i)) for i in range(ax.size)]
-        bins.append(bins[-1] + 1)  # right edge, not really applicable here though
-        return np.asarray(bins)
-
-    return edges
-
-
 def get_shape(histref: bh.Histogram, flow: bool) -> tuple[int, ...]:
+    """Return shape of histogram."""
     if flow:
         return histref.axes.extent
     return histref.shape
 
 
-def _clone(histref: bh.Histogram) -> bh.Histogram:
+def clone(histref: bh.Histogram) -> bh.Histogram:
+    """Clone reference histogram."""
     return bh.Histogram(*histref.axes, storage=histref.storage_type())
 
 
@@ -372,10 +347,10 @@ def _blocked_dd(
 
     Arrays are already broadcasted.
     """
-    thehist = _clone(histref)
+    thehist = clone(histref)
     flattened = (np.reshape(x, (-1,)) for x in data)
 
-    thehist = _clone(histref)
+    thehist = clone(histref)
     if weight:
         *args, weights = flattened
         thehist.fill(*args, weight=weights)
@@ -419,7 +394,7 @@ def _blocked_dd_loop(
 
     counts = np.zeros((n_loop, *get_shape(histref, flow)))
     for i in range(n_loop):
-        thehist = _clone(histref)
+        thehist = clone(histref)
         if weight:
             *args, weights = flattened
             thehist.fill(*[a[i] for a in args], weight=weights[i])
@@ -548,3 +523,107 @@ def is_any_dask(data: abc.Sequence[xr.DataArray]) -> bool:
     Only return true if Dask is imported.
     """
     return HAS_DASK and any(is_dask_collection(a.data) for a in data)
+
+
+def get_coord(name: str, ax: bh.axis.Axis, dtype: np.dtype, flow: bool) -> xr.DataArray:
+    """Return bins coordinates for output.
+
+    Will include attributes suited for accessor.
+    """
+    underflow = flow and ax.traits.underflow
+    overflow = flow and ax.traits.overflow
+    attrs = dict(bin_type=type(ax).__name__, underflow=underflow, overflow=overflow)
+
+    if isinstance(ax, bh.axis.Integer):
+        lefts = ax.edges[:-1].astype(dtype)
+        # use min/max possible encoded values to indicate flow
+        if underflow:
+            if dtype.kind == "u":
+                dtype = np.dtype(f"i{min(dtype.itemsize * 2, 8)}")
+            vmin = np.iinfo(dtype).min
+            lefts = np.concatenate(([vmin], lefts), dtype=dtype)
+        if overflow:
+            vmax = np.iinfo(dtype).max
+            lefts = np.concatenate((lefts, [vmax]), dtype=dtype)
+
+    elif isinstance(ax, bh.axis.IntCategory):
+        lefts = np.asarray([cast(int, ax.bin(i)) for i in range(ax.size)])
+        lefts = lefts.astype(dtype)
+        if overflow:
+            lefts = np.concatenate((lefts, [np.iinfo(dtype).max]), dtype=dtype)
+
+    elif isinstance(ax, bh.axis.StrCategory):
+        lefts = np.asarray([ax.bin(i) for i in range(ax.size)])
+        if overflow:
+            lefts = np.concatenate((lefts, ["_flow_bin"]))
+
+    else:
+        lefts = ax.edges[:-1].astype(dtype, casting="safe")
+        attrs["right_edge"] = ax.edges[-1]
+        if underflow:
+            lefts = np.concatenate(([-np.inf], lefts))
+        if overflow:
+            lefts = np.concatenate((lefts, [np.inf]))
+
+    return xr.DataArray(lefts, dims=[name], name=name, attrs=attrs)
+
+
+def _bins_name(variable: str) -> str:
+    return f"{variable}_bins"
+
+
+def get_edges(coord: xr.DataArray) -> xr.DataArray:
+    """Return edges positions."""
+    name = coord.name
+    if coord.attrs["bin_type"] in ["Integer", "IntCategory", "StrCategory"]:
+        return xr.DataArray(coord.values, dims=[name], name=name)
+
+    # insert right_edge
+    values = coord.values
+    insert = values.size - 1 if coord.attrs.get("overflow", False) else values.size
+    values = np.insert(values, insert, [coord.attrs["right_edge"]])
+
+    return xr.DataArray(values, dims=[name], name=name)
+
+
+def get_widths(coord: xr.DataArray) -> xr.DataArray:
+    """Return bins width."""
+    name = coord.name
+    if coord.attrs["bin_type"] in ["Integer", "IntCategory", "StrCategory"]:
+        return xr.ones_like(coord, dtype=int)
+
+    # Regular and Variable
+    underflow = coord.attrs.get("underflow", False)
+    overflow = coord.attrs.get("overflow", False)
+    slc = slice(1 if underflow else 0, -1 if overflow else None)
+
+    edges = np.concatenate((coord[slc], [coord.attrs["right_edge"]]))
+    widths = np.diff(edges)
+
+    if underflow:
+        widths = np.concatenate(([1], widths))
+    if overflow:
+        widths = np.concatenate((widths, [1]))
+
+    return xr.DataArray(widths, dims=[name], coords={name: coord}, name=name)
+
+
+def get_area(hist: xr.DataArray, bins_names: abc.Sequence[str]) -> xr.DataArray:
+    """Return areas of bins."""
+    return reduce(operator.mul, [get_widths(hist[b]) for b in bins_names])
+
+
+def normalize(
+    hist: xr.DataArray, bins_all: abc.Sequence, bins_normalize: abc.Sequence[str]
+) -> xr.DataArray:
+    """Normalize histogram along given variables."""
+    # do not count flow bins in sum
+    hist_no_flow = hist
+    for b in bins_all:
+        underflow = hist[b].attrs.get("underflow", False)
+        overflow = hist[b].attrs.get("overflow", False)
+        slc = slice(1 if underflow else 0, -1 if overflow else None)
+        hist_no_flow = hist_no_flow.isel({b: slc})
+
+    pdf = hist / get_area(hist, bins_normalize) / hist_no_flow.sum(bins_normalize)
+    return pdf
