@@ -29,6 +29,18 @@ def get_blank_histogram(n_var: int = 1) -> xr.DataArray:
     return h
 
 
+def get_hist(*axes: bh.axis.Axis, flow=True) -> xr.DataArray:
+    data = []
+    for ax in axes:
+        x = get_array([2])
+        if isinstance(ax, bh.axis.Integer | bh.axis.IntCategory):
+            x = x.astype("int")
+        if isinstance(ax, bh.axis.StrCategory):
+            x = x.astype("U")
+        data.append(x)
+    return xh.histogramdd(*data, bins=axes, flow=flow)
+
+
 class TestAccessibility:
     @pytest.mark.parametrize("x", [get_array([20]), get_array([20, 5])], ids=id_x)
     @bool_param("density")
@@ -65,8 +77,42 @@ def test_variable_argument() -> None:
 
 
 class TestEdges:
+    def test_edges(self) -> None:
+        # Regular
+        h = get_hist(bh.axis.Regular(3, 0.0, 0.3), flow=False)
+        assert_allclose(h.hist.edges(), [0.0, 0.1, 0.2, 0.3])
+        h = get_hist(bh.axis.Regular(3, 0.0, 0.3, underflow=False))
+        assert_allclose(h.hist.edges(), [0.0, 0.1, 0.2, 0.3, np.inf])
+        h = get_hist(bh.axis.Regular(3, 0.0, 0.3))
+        assert_allclose(h.hist.edges(), [-np.inf, 0.0, 0.1, 0.2, 0.3, np.inf])
+
+        # Integer
+        h = get_hist(bh.axis.Integer(0, 3), flow=False)
+        assert_allclose(h.hist.edges(), [0, 1, 2, 3])
+        h = get_hist(bh.axis.Integer(0, 3, underflow=False))
+        dtype = h.var1_bins.dtype
+        vmin = np.iinfo(dtype).min
+        vmax = np.iinfo(dtype).max
+        assert_allclose(h.hist.edges(), [0, 1, 2, 3, vmax])
+        h = get_hist(bh.axis.Integer(0, 3))
+        assert_allclose(h.hist.edges(), [vmin, 0, 1, 2, 3, vmax])
+
+        # Variable
+        h = get_hist(bh.axis.Variable([0, 1, 3, 10]), flow=False)
+        assert_allclose(h.hist.edges(), [0, 1, 3, 10])
+        h = get_hist(bh.axis.Variable([0, 1, 3, 10], underflow=False))
+        assert_allclose(h.hist.edges(), [0, 1, 3, 10, np.inf])
+        h = get_hist(bh.axis.Variable([0, 1, 3, 10]))
+        assert_allclose(h.hist.edges(), [-np.inf, 0, 1, 3, 10, np.inf])
+
+        # Not supported
+        for ax in [bh.axis.IntCategory([0, 1, 2]), bh.axis.StrCategory(["a", "b"])]:
+            h = get_hist(ax)
+            with pytest.raises(TypeError):
+                h.hist.edges()
+
     def test_infer_right_edge(self) -> None:
-        h = get_blank_histogram()
+        h = get_hist(bh.axis.Regular(10, 0.0, 1.0), flow=False)
         # this reset right edge
         h = h.assign_coords(var1_bins=np.arange(0, 10))
 
@@ -77,10 +123,6 @@ class TestEdges:
         h_wrong = h.assign_coords(var1_bins=np.logspace(1, 10, 10))
         with pytest.raises(ValueError):
             _ = h_wrong.hist
-
-    def test_basic(self) -> None:
-        h = get_blank_histogram()
-        assert_allclose(h.hist.edges("var1"), np.arange(0, 11))
 
     def test_centers(self):
         h = get_blank_histogram()

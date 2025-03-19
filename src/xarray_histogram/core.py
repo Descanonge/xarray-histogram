@@ -12,7 +12,6 @@ import warnings
 from collections import abc
 from copy import copy
 from functools import partial, reduce
-from typing import cast
 
 import boost_histogram as bh
 import numpy as np
@@ -42,9 +41,6 @@ LOOP_DIM = "__loop_var"
 
 BinsType = bh.axis.Axis | int
 RangeType = tuple[float | None, float | None]
-
-
-# TODO add flow
 
 
 def histogram(
@@ -535,30 +531,51 @@ def get_coord(name: str, ax: bh.axis.Axis, dtype: np.dtype, flow: bool) -> xr.Da
     attrs = dict(bin_type=type(ax).__name__, underflow=underflow, overflow=overflow)
 
     if isinstance(ax, bh.axis.Integer):
-        lefts = ax.edges[:-1].astype(dtype)
+        if dtype.kind not in "uib":
+            raise TypeError(f"Cannot use Integer axis for dtype {dtype}")
+
+        lefts = ax.edges[:-1].astype("int")
+
+        # deal with bool variables
+        if dtype.kind == "b" and not (underflow or overflow):
+            lefts = lefts.astype("bool")
+
         # use min/max possible encoded values to indicate flow
+        bins_dtype = lefts.dtype
         if underflow:
-            if dtype.kind == "u":
-                dtype = np.dtype(f"i{min(dtype.itemsize * 2, 8)}")
-            vmin = np.iinfo(dtype).min
-            lefts = np.concatenate(([vmin], lefts), dtype=dtype)
+            vmin = np.iinfo(bins_dtype).min
+            lefts = np.concatenate(([vmin], lefts), dtype=bins_dtype)
         if overflow:
-            vmax = np.iinfo(dtype).max
-            lefts = np.concatenate((lefts, [vmax]), dtype=dtype)
+            vmax = np.iinfo(bins_dtype).max
+            lefts = np.concatenate((lefts, [vmax]), dtype=bins_dtype)
 
     elif isinstance(ax, bh.axis.IntCategory):
-        lefts = np.asarray([cast(int, ax.bin(i)) for i in range(ax.size)])
-        lefts = lefts.astype(dtype)
+        if dtype.kind not in "uib":
+            raise TypeError(f"Cannot use Integer axis for dtype {dtype}")
+
+        lefts = np.asarray([ax.bin(i) for i in range(ax.size)], dtype="int")
+
+        # deal with bool variables
+        if dtype.kind == "b" and not (underflow or overflow):
+            lefts = lefts.astype("bool")
+
+        bins_dtype = lefts.dtype
         if overflow:
-            lefts = np.concatenate((lefts, [np.iinfo(dtype).max]), dtype=dtype)
+            lefts = np.concatenate(
+                (lefts, [np.iinfo(bins_dtype).max]), dtype=bins_dtype
+            )
 
     elif isinstance(ax, bh.axis.StrCategory):
+        if dtype.kind not in "SU":
+            raise TypeError(f"Cannot use StrCategory axis for dtype {dtype}")
         lefts = np.asarray([ax.bin(i) for i in range(ax.size)])
         if overflow:
             lefts = np.concatenate((lefts, ["_flow_bin"]))
 
     else:
-        lefts = ax.edges[:-1].astype(dtype, casting="safe")
+        if dtype.kind not in "biuf":
+            raise TypeError(f"Cannot use {type(ax).__name__} axis for dtype {dtype}")
+        lefts = ax.edges[:-1]
         attrs["right_edge"] = ax.edges[-1]
         if underflow:
             lefts = np.concatenate(([-np.inf], lefts))
@@ -575,13 +592,19 @@ def _bins_name(variable: str) -> str:
 def get_edges(coord: xr.DataArray) -> xr.DataArray:
     """Return edges positions."""
     name = coord.name
-    if coord.attrs["bin_type"] in ["Integer", "IntCategory", "StrCategory"]:
-        return xr.DataArray(coord.values, dims=[name], name=name)
+    bin_type = coord.attrs["bin_type"]
+    if bin_type in ["IntCategory", "StrCategory"]:
+        raise TypeError(f"Edges not available for {bin_type} bins type.")
 
-    # insert right_edge
+    overflow = coord.attrs.get("overflow", False)
+
+    if bin_type == "Integer":
+        right_edge = coord[-2 if overflow else -1] + 1
+    else:
+        right_edge = coord.attrs["right_edge"]
     values = coord.values
-    insert = values.size - 1 if coord.attrs.get("overflow", False) else values.size
-    values = np.insert(values, insert, [coord.attrs["right_edge"]])
+    insert = values.size - 1 if overflow else values.size
+    values = np.insert(values, insert, [right_edge])
 
     return xr.DataArray(values, dims=[name], name=name)
 
