@@ -152,11 +152,18 @@ class TestCoords:
         h = get_hist(bh.axis.Integer(0, 4))
         assert_allclose(h.hist.centers(), [vmin, 0.5, 1.5, 2.5, 3.5, vmax])
 
+        # IntCategory
+        h = get_hist(bh.axis.IntCategory([0, 1, 5, 2]), flow=False)
+        assert_allclose(h.hist.centers(), [0.5, 1.5, 5.5, 2.5])
+        h = get_hist(bh.axis.IntCategory([0, 1, 5, 2]))
+        dtype = h.var1_bins.dtype
+        vmax = np.iinfo(dtype).max
+        assert_allclose(h.hist.centers(), [0.5, 1.5, 5.5, 2.5, vmax])
+
         # Not supported
-        for ax in [bh.axis.IntCategory([0, 1, 2]), bh.axis.StrCategory(["a", "b"])]:
-            h = get_hist(ax)
-            with pytest.raises(TypeError):
-                h.hist.centers()
+        h = get_hist(bh.axis.StrCategory(["a", "b"]))
+        with pytest.raises(TypeError):
+            h.hist.centers()
 
     def test_widths(self):
         # Regular

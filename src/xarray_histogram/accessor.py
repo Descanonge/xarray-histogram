@@ -117,7 +117,7 @@ class HistDataArrayAccessor:
                 raise KeyError(f"No bin coordinates '{bin_dim}'")
             c = obj.coords[bin_dim]
             # Default is Regular
-            if "bin_type" not in c.attrs and "right_edge" not in c.attrs:
+            if "bin_type" not in c.attrs:
                 diff = np.diff(c)
                 if not np.allclose(diff, diff[0]):
                     raise ValueError(
@@ -158,11 +158,12 @@ class HistDataArrayAccessor:
         variable = self._variable(variable)
         dim = _bins_name(variable)
 
-        if (bt := self._obj.coords[dim].attrs["bin_type"]) in [
-            "IntCategory",
-            "StrCategory",
-        ]:
-            raise TypeError(f"Centers not supported for bin type {bt}")
+        coord = self.bins(variable)
+        bin_type = coord.attrs["bin_type"]
+        if bin_type == "StrCategory":
+            raise TypeError(f"Centers not supported for bin type {bin_type}")
+        if bin_type in ["Integer", "IntCategory"]:
+            return coord + 0.5
 
         def center(coord):
             return coord.rolling({dim: 2}, center=True).sum().dropna(dim) / 2.0
