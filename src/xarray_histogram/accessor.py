@@ -145,17 +145,24 @@ class HistDataArrayAccessor:
             )
         return var
 
-    def bins(self, variable: str | None = None) -> xr.DataArray:
         """Return bins coordinates for a given variable."""
+    def bins(self, variable: str | None = None, flow: bool = True) -> xr.DataArray:
         variable = self._variable(variable)
         dim = _bins_name(variable)
-        return self._obj.coords[dim]
+        coord = self._obj.coords[dim]
+        if not flow:
+            coord = remove_flow(coord)
+        return coord
 
-    def edges(self, variable: str | None = None) -> xr.DataArray:
+    def edges(self, variable: str | None = None, flow: bool = True) -> xr.DataArray:
+        edges = get_edges(self.bins(variable))
+        if not flow:
+            edges = remove_flow(edges)
+        return edges
+
         """Return the edges of the bins (including the right most edge)."""
-        return get_edges(self.bins(variable))
+    def centers(self, variable: str | None = None, flow: bool = True) -> xr.DataArray:
 
-    def centers(self, variable: str | None = None) -> xr.DataArray:
         """Return the center of all bins."""
         variable = self._variable(variable)
         dim = _bins_name(variable)
@@ -165,25 +172,33 @@ class HistDataArrayAccessor:
         if bin_type == "StrCategory":
             raise TypeError(f"Centers not supported for bin type {bin_type}")
         if bin_type in ["Integer", "IntCategory"]:
-            return coord + 0.5
+            out = coord + 0.5
+            if not flow:
+                out = remove_flow(out)
+            return out
 
         def center(coord):
             return coord.rolling({dim: 2}, center=True).sum().dropna(dim) / 2.0
 
-        return self._apply_to_coord(center, variable, keep_right_edge=True)
+        return self._apply_to_coord(center, variable, keep_right_edge=True, flow=flow)
 
-    def widths(self, variable: str | None = None) -> xr.DataArray:
         """Return the width of all bins."""
-        return get_widths(self.bins(variable))
+    def widths(self, variable: str | None = None, flow: bool = True) -> xr.DataArray:
 
-    def areas(self, variables: abc.Sequence[str] | None = None) -> xr.DataArray:
+        widths = get_widths(self.bins(variable))
+        if not flow:
+            widths = remove_flow(widths)
+        return widths
+    def areas(
+        self, variables: abc.Sequence[str] | None = None, flow: bool = True
+    ) -> xr.DataArray:
         """Return the areas of the bins.
 
         The product of the widths of all bins.
         """
         if variables is None:
             variables = self.variables
-        return get_area(*[self.bins(v) for v in variables])
+        return get_area(*[self.bins(v, flow=flow) for v in variables])
 
     def normalize(
         self, variables: str | abc.Sequence[str] | None = None
@@ -216,6 +231,7 @@ class HistDataArrayAccessor:
         func: abc.Callable[[xr.DataArray], xr.DataArray],
         variable: str,
         keep_right_edge: bool = False,
+        flow: bool = True,
         **kwargs,
     ) -> xr.DataArray:
         dim = _bins_name(variable)
@@ -253,12 +269,16 @@ class HistDataArrayAccessor:
         if "right_edge" in coord.attrs:
             new_coord.attrs["right_edge"] = (new_edges[-1]).values.item()
 
+        if not flow:
+            new_coord = remove_flow(new_coord)
+
         return new_coord
 
     def apply_func(
         self,
         func: abc.Callable[[xr.DataArray], xr.DataArray],
         variable: str | None = None,
+        flow: bool = True,
         **kwargs,
     ) -> xr.DataArray:
         """Apply a function to a bins coordinate.
@@ -281,7 +301,9 @@ class HistDataArrayAccessor:
         )
         return self._obj.assign_coords({dim: new_coord})
 
-    def scale(self, factor: float, variable: str | None = None) -> xr.DataArray:
+    def scale(
+        self, factor: float, variable: str | None = None, flow: bool = True
+    ) -> xr.DataArray:
         """Transform a bins coordinate by scaling it.
 
         Parameters
@@ -292,7 +314,7 @@ class HistDataArrayAccessor:
             The variable to scale. (This is equivalent to computing an histogram of
             ``factor * ds["variable"]``).
         """
-        return self.apply_func(lambda arr: arr * factor, variable)
+        return self.apply_func(lambda arr: arr * factor, variable, flow=flow)
 
     def _apply_rv_func(
         self, func: str, variable: str | None = None, **kwargs
@@ -464,3 +486,12 @@ class HistDataArrayAccessor:
         high = self._apply_rv_func("ppf", variable, q=1 - p_tail)
         output = xr.Dataset(dict(confidence_low=low, confidence_high=high))
         return output
+
+
+def remove_flow(x: xr.DataArray) -> xr.DataArray:
+    overflow = x.attrs.get("overflow", False)
+    underflow = x.attrs.get("underflow", False)
+    out = x[slice(1 if underflow else 0, -1 if overflow else None)]
+    out.attrs["underflow"] = False
+    out.attrs["overflow"] = True
+    return out
