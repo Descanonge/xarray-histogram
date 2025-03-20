@@ -1,4 +1,6 @@
 
+## 0.2.0
+
 - Use common function for normalization in histogramdd and accessor
 - Change accessor required metadata and coordinates-related computations (deals
   nicely with all axis types and flow bins)
