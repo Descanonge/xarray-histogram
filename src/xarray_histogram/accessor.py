@@ -362,18 +362,24 @@ class HistDataArrayAccessor:
         """
         variable = self._variable(variable)
         dim = _bins_name(variable)
-        bins = self.edges(variable)
-        density = self.is_normalized()
+        coord = self.bins(variable)
+        if coord.attrs.get("underflow", False) or coord.attrs.get("overflow", False):
+            no_flow = self.remove_flow([dim])
+            return no_flow.hist._apply_rv_func(func, variable, **kwargs)
 
-        def wrapped(arr: np.ndarray) -> float:
+        def wrapped(arr: np.ndarray, edges: np.ndarray, density: bool) -> float:
             if np.all(np.isnan(arr)):
                 return np.nan
-            rv_hist = rv_histogram((arr, bins), density=density)
+            rv_hist = rv_histogram((arr, edges), density=density)
             return getattr(rv_hist, func)(**kwargs)
+
+        edges = self.edges(variable)
+        density = self.is_normalized()
 
         output = xr.apply_ufunc(
             wrapped,
             self._obj,
+            kwargs=dict(edges=edges.to_numpy(), density=density),
             input_core_dims=[[dim]],
             output_core_dims=[[]],
             output_dtypes=[float],
@@ -382,6 +388,7 @@ class HistDataArrayAccessor:
         )
 
         output = output.rename(f"{variable}_{func}")
+
         return output
 
     def ppf(self, q: float, variable: str | None = None) -> xr.DataArray:
