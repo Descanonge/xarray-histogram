@@ -24,19 +24,20 @@ class HistDataArrayAccessor:
     .. rubric:: Validity
 
     * The coordinates of the bins must be named ``<variable>_bins``.
-    * The array must be named as ``<variable(s)_name>_<histogram or pdf>``. histogram*
-    *if it is not normalized, and *pdf* if it is normalized as a probability density
-    *function. If the histogram is multi-dimensional, the variables names must be
-    *separated by underscores. For instance: ``Temp_Sal_histogram``.
+    * The array must be named as ``<variable(s)_name>_<histogram or pdf>``. *histogram*
+      if it is not normalized, and *pdf* if it is normalized as a probability density
+      function. If the histogram is multi-dimensional, the variables names must be
+      separated by underscores. For instance: ``Temp_Sal_histogram``.
 
     Each bins coordinate may contain attributes:
 
     * ``bin_type``: the class name of the Boost axis type that was used. If not present,
-    the accessor will assume the bins are regularly spaced and will try to infer the
-    rightmost edge. * ``right_edge``: the rightmost edge position, only necessary for
-    Regular and Variable bins. * ``underflow`` and ``overflow``: booleans that indicate
-    if the corresponding flow bins are present. If not present, will assume no flow
-    bins.
+      the accessor will assume the bins are regularly spaced and will try to infer the
+      rightmost edge.
+    * ``right_edge``: the rightmost edge position, only necessary for Regular and
+       Variable bins.
+    * ``underflow`` and ``overflow``: booleans that indicate if the corresponding flow
+      bins are present. If not present, will assume no flow bins.
 
     .. rubric:: Backend for computations
 
@@ -572,10 +573,11 @@ class HistDataArrayAccessor:
         return output
 
 
-def remove_flow(x: xr.DataArray) -> xr.DataArray:
-    overflow = x.attrs.get("overflow", False)
-    underflow = x.attrs.get("underflow", False)
-    out = x[slice(1 if underflow else 0, -1 if overflow else None)]
+def remove_flow(coord: xr.DataArray) -> xr.DataArray:
+    """Remove flow bins from a coordinate."""
+    overflow = coord.attrs.get("overflow", False)
+    underflow = coord.attrs.get("underflow", False)
+    out = coord[slice(1 if underflow else 0, -1 if overflow else None)]
     out.attrs["underflow"] = False
     out.attrs["overflow"] = True
     return out

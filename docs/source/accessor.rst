@@ -6,9 +6,9 @@ Accessor
 
 An :external+xarray:doc:`accessor <internals/extending-xarray>` is provided to
 ease manipulation and analysis of the histogram outputs. Simply import
-:mod:`xarray_histogram.accessor` to register it. It will then be available for
-all DataArrays that meet some conditions (see below), under the ``hist``
-attribute. It gives access to a number of methods. ::
+:mod:`xarray_histogram.accessor` to register it. It will then be available under
+the ``hist`` attribute for all DataArrays that meet some conditions (see below).
+It gives access to a number of methods. ::
 
     import xarray_histogram as xh
     import xarray_histogram.accessor
@@ -17,7 +17,7 @@ attribute. It gives access to a number of methods. ::
 
     h.hist.median()
 
-Operations are vectorized [#vector]_, so that you can apply them to entire
+Operations are vectorized so that you can apply them to entire
 arrays of histograms. For instance for data defined along time, latitude and
 longitude, we can compute one histogram per time-step::
 
@@ -25,7 +25,9 @@ longitude, we can compute one histogram per time-step::
     >>> h.hist.median()
     will be of dimensions ("time",)
 
-.. [#vector] Computations are automatically vectorized in Python with
+.. note::
+
+   Computations are automatically vectorized in Python with
    :func:`xarray.apply_ufunc`, which is not efficient for a large number of
    histograms.
 
@@ -56,7 +58,7 @@ Each bins coordinate may contain attributes:
 
 Those conventions are coherent with the output of
 ``xarray_histogram.histogram*``, so if you use this package functions you
-should not have to worry. The names of the array and coordinates is also
+should not have to worry. The names of the array and coordinates are also
 consistent with that of :external+xhistogram:doc:`xhistogram <index>`
 (although coordinates attributes will be missing).
 
@@ -85,11 +87,11 @@ excluded by passing ``flow=False``.
   bins. The overflow bins centers are the same as their position (``np.inf`` for
   instance).
 
-* :meth:`~.HistDataArrayAccessor.areas` returns the areas of multidimensional
-  bins. This is the product of the widths of all bins. Only some variable can be
-  specified. The areas of points that correspond to a flow bin in at least one
-  dimension is equal to one. For instance for a 2D-histogram with underflow and
-  overflow bins, all the borders of the 2D array for areas will be equal to 1.
+* :meth:`~.HistDataArrayAccessor.areas` returns the areas corresponding to each
+  histogram point. This is the outer product of the widths of all bins. The
+  areas of points that correspond to a flow bin in at least one dimension is
+  equal to one. For instance for a 2D-histogram with underflow and overflow
+  bins, all the borders of the 2D array for areas will be equal to 1.
 
 To remove flow bins, :meth:`~.HistDataArrayAccessor.remove_flow` will returns a
 new histogram DataArray without the flow bins of the given variables (by default
@@ -102,9 +104,9 @@ Bins transform
 
 Arbitrary functions can be applied to bins with
 :meth:`~.HistDataArrayAccessor.apply_func`. The result is equivalent to
-computing an histogram of ``func(data["variable"])``. The function must
+computing the histogram of ``func(data["variable"])``. The function must
 transform the N+1 edges given as a DataArray. There is no need to account for
-the *right_edge* attribute.
+the *right_edge* attribute or flow bins.
 
 For instance, :meth:`~.HistDataArrayAccessor.scale` scales bins by a given
 factor. It essential does ``hist.apply_func(lambda edges: edges * factor)``
@@ -115,7 +117,7 @@ Normalization
 
 The histogram can be normalized to a probability density function if not
 already, using :meth:`~.HistDataArrayAccessor.normalize`. Note that for a
-N-dimensional histogram, this function can normalize only along some variables.
+N-dimensional histogram, this function can normalize along only some variables.
 
 The accessor considers the histogram normalized or not given the name of its
 DataArray: normalized if named ``<variables>_pdf`` and non-normalized

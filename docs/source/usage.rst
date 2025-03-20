@@ -50,18 +50,21 @@ supported. Instead, use a
    </user-guide/axes.rst#regular-axis-transforms>` applied) is more efficient:
    it avoids having to use binary search to find in which bin a value falls.
 
-Some basic examples of axis include::
+Some examples of axis include::
 
    import boost_histogram.axis as bha
 
    # regular width bins
    bha.Regular(200, 0., 10.)
+
    # logarithmically spaced bins (without performance loss)
    bha.Regular(200, 1e-3, 10., transform=bha.transform.log)
+
    # integer bins
    bha.Integer(0, 20)
+
    # boolean
-   bha.Integer(0, 2, underflow=False, overflow=True)
+   bha.Integer(0, 2, underflow=False, overflow=False)
 
 Over/underflow
 ==============
@@ -81,7 +84,7 @@ coordinates values for the underflow and overflow bins will be set to
 Output
 ======
 
-All three functions return a simple :class:`xarray.DataArray`. Its name is
+All three functions return a single :class:`xarray.DataArray`. Its name is
 ``<variable names separated by underscores>_histogram`` (so for instance
 ``x_y_histogram``). The bins edges are contained in coordinates named
 ``<variable>_bins``. The right edge of the last bin is stored in a coordinate
