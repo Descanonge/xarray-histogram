@@ -631,9 +631,9 @@ def get_widths(coord: xr.DataArray) -> xr.DataArray:
     return xr.DataArray(widths, dims=[name], coords={name: coord}, name=name)
 
 
-def get_area(hist: xr.DataArray, bins_names: abc.Sequence[str]) -> xr.DataArray:
+def get_area(*coords: xr.DataArray) -> xr.DataArray:
     """Return areas of bins."""
-    return reduce(operator.mul, [get_widths(hist[b]) for b in bins_names])
+    return reduce(operator.mul, [get_widths(c) for c in coords])
 
 
 def normalize(
@@ -648,5 +648,6 @@ def normalize(
         slc = slice(1 if underflow else 0, -1 if overflow else None)
         hist_no_flow = hist_no_flow.isel({b: slc})
 
-    pdf = hist / get_area(hist, bins_normalize) / hist_no_flow.sum(bins_normalize)
+    coords = [hist[b] for b in bins_normalize]
+    pdf = hist / get_area(*coords) / hist_no_flow.sum(bins_normalize)
     return pdf
