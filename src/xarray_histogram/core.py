@@ -606,7 +606,7 @@ def get_edges(coord: xr.DataArray) -> xr.DataArray:
     insert = values.size - 1 if overflow else values.size
     values = np.insert(values, insert, [right_edge])
 
-    return xr.DataArray(values, dims=[name], name=name)
+    return xr.DataArray(values, dims=[name], name=name, attrs=coord.attrs)
 
 
 def get_widths(coord: xr.DataArray) -> xr.DataArray:
@@ -628,7 +628,9 @@ def get_widths(coord: xr.DataArray) -> xr.DataArray:
     if overflow:
         widths = np.concatenate((widths, [1]))
 
-    return xr.DataArray(widths, dims=[name], coords={name: coord}, name=name)
+    return xr.DataArray(
+        widths, dims=[name], coords={name: coord}, name=name, attrs=coord.attrs
+    )
 
 
 def get_area(*coords: xr.DataArray) -> xr.DataArray:
