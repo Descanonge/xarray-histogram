@@ -633,7 +633,13 @@ def get_widths(coord: xr.DataArray) -> xr.DataArray:
 
 def get_area(*coords: xr.DataArray) -> xr.DataArray:
     """Return areas of bins."""
-    return reduce(operator.mul, [get_widths(c) for c in coords])
+    areas = reduce(operator.mul, [get_widths(c) for c in coords])
+    for coord in coords:
+        if coord.attrs.get("underflow", False):
+            areas[{coord.name: 0}] = 1
+        if coord.attrs.get("overflow", False):
+            areas[{coord.name: -1}] = 1
+    return areas
 
 
 def normalize(
