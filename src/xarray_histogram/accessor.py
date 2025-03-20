@@ -136,19 +136,22 @@ class HistDataArrayAccessor:
         if var is None:
             if len(self.variables) == 1:
                 return self.variables[0]
-            raise TypeError("A variable must be given.")
+            raise ValueError("A variable must be given.")
         if var not in self.variables:
             raise KeyError(
                 f"'{var}' is not among the histogram variables ({self.variables})"
             )
         return var
 
-    def edges(self, variable: str | None = None) -> xr.DataArray:
-        """Return the edges of the bins (including the right most edge)."""
+    def bins(self, variable: str | None = None) -> xr.DataArray:
+        """Return bins coordinates for a given variable."""
         variable = self._variable(variable)
         dim = _bins_name(variable)
-        coord = self._obj.coords[dim]
-        return get_edges(coord)
+        return self._obj.coords[dim]
+
+    def edges(self, variable: str | None = None) -> xr.DataArray:
+        """Return the edges of the bins (including the right most edge)."""
+        return get_edges(self.bins(variable))
 
     def centers(self, variable: str | None = None) -> xr.DataArray:
         """Return the center of all bins."""
@@ -168,10 +171,7 @@ class HistDataArrayAccessor:
 
     def widths(self, variable: str | None = None) -> xr.DataArray:
         """Return the width of all bins."""
-        variable = self._variable(variable)
-        dim = _bins_name(variable)
-        coord = self._obj.coords[dim]
-        return get_widths(coord)
+        return get_widths(self.bins(variable))
 
     def areas(self, variables: abc.Sequence[str] | None = None) -> xr.DataArray:
         """Return the areas of the bins.
@@ -180,7 +180,7 @@ class HistDataArrayAccessor:
         """
         if variables is None:
             variables = self.variables
-        return get_area(self._obj, [_bins_name(v) for v in variables])
+        return get_area(*[self.bins(v) for v in variables])
 
     def normalize(
         self, variables: str | abc.Sequence[str] | None = None
