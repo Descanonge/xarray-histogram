@@ -154,9 +154,17 @@ class HistDataArrayAccessor:
         """Return the center of all bins."""
         variable = self._variable(variable)
         dim = _bins_name(variable)
-        return (
-            self.edges(variable).rolling({dim: 2}, center=True).sum().dropna(dim) / 2.0
-        )
+
+        if (bt := self._obj.coords[dim].attrs["bin_type"]) in [
+            "IntCategory",
+            "StrCategory",
+        ]:
+            raise TypeError(f"Centers not supported for bin type {bt}")
+
+        def center(coord):
+            return coord.rolling({dim: 2}, center=True).sum().dropna(dim) / 2.0
+
+        return self._apply_to_coord(center, variable, keep_right_edge=True)
 
     def widths(self, variable: str | None = None) -> xr.DataArray:
         """Return the width of all bins."""
@@ -200,6 +208,50 @@ class HistDataArrayAccessor:
         output = output.rename("_".join(self.variables) + "_pdf")
         return output
 
+    def _apply_to_coord(
+        self,
+        func: abc.Callable[[xr.DataArray], xr.DataArray],
+        variable: str,
+        keep_right_edge: bool = False,
+        **kwargs,
+    ) -> xr.DataArray:
+        dim = _bins_name(variable)
+        coord = self._obj.coords[dim]
+
+        # save flow bins coordinates
+        underflow = coord.attrs.get("underflow", False)
+        overflow = coord.attrs.get("overflow", False)
+        underflow_bin = coord[0]
+        overflow_bin = coord[-1]
+
+        try:
+            edges = self.edges(variable)
+            edges_is_coord = False
+        except TypeError:
+            edges = coord
+            edges_is_coord = True
+
+        slc = slice(1 if underflow else 0, -1 if overflow else None)
+        new_edges = func(edges[slc], **kwargs)
+        if dim not in new_edges.coords:
+            new_edges = new_edges.assign_coords({dim: new_edges})
+
+        if keep_right_edge or edges_is_coord:
+            new_coord = new_edges
+        else:
+            new_coord = new_edges[:-1]
+
+        if underflow:
+            new_coord = xr.concat([underflow_bin, new_coord], dim=dim)
+        if overflow:
+            new_coord = xr.concat([new_coord, overflow_bin], dim=dim)
+
+        new_coord.attrs.update(coord.attrs)
+        if "right_edge" in coord.attrs:
+            new_coord.attrs["right_edge"] = (new_edges[-1]).values.item()
+
+        return new_coord
+
     def apply_func(
         self,
         func: abc.Callable[[xr.DataArray], xr.DataArray],
@@ -221,29 +273,9 @@ class HistDataArrayAccessor:
         """
         variable = self._variable(variable)
         dim = _bins_name(variable)
-
-        coord = self._obj.coords[dim]
-        edges = self.edges(variable)
-
-        # save flow bins coordinates
-        underflow = edges.attrs.get("underflow", False)
-        overflow = edges.attrs.get("overflow", False)
-        slc = slice(1 if underflow else 0, -1 if overflow else None)
-        underflow_bin = edges[0]
-        overflow_bin = edges[-1]
-
-        edges = edges[slc]
-        new_edges = func(edges[slc], **kwargs)
-
-        new_coord = new_edges[:-1]
-        if underflow:
-            new_coord = xr.concat([underflow_bin, new_coord], dim=dim)
-        if overflow:
-            new_coord = xr.concat([new_coord, overflow_bin], dim=dim)
-
-        new_coord.attrs.update(coord.attrs)
-        new_coord.attrs["right_edge"] = (new_edges[-1]).values.item()
-
+        new_coord = self._apply_to_coord(
+            func, variable, keep_right_edge=False, **kwargs
+        )
         return self._obj.assign_coords({dim: new_coord})
 
     def scale(self, factor: float, variable: str | None = None) -> xr.DataArray:

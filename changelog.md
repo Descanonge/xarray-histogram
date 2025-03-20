@@ -1,6 +1,7 @@
 
-- Change accessor necessary metadata and better coordinates (deal nicely with
-  all axis types and flow bins)
+- Use common function for normalization in histogramdd and accessor
+- Change accessor required metadata and coordinates-related computations (deals
+  nicely with all axis types and flow bins)
 - Create coordinates before computation to catch errors early
 - Fix: Add looping coordinates to output for Dask data
 
