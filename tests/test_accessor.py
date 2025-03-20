@@ -221,6 +221,32 @@ class TestCoords:
         assert_allclose(h.hist.areas(["var2", "var3"]), np.outer(w2, w3))
         assert_allclose(h.hist.areas(), reduce(np.multiply, np.ix_(w1, w2, w3)))
 
+    def test_areas_flow(self):
+        ax1 = bh.axis.Regular(5, 0, 10)
+        ax2 = bh.axis.Regular(5, 0, 10)
+        h = get_hist(ax1, ax2, flow=True)
+
+        ref = np.asarray(
+            [
+                [1, 1, 1, 1, 1, 1, 1],
+                [1, 4, 4, 4, 4, 4, 1],
+                [1, 4, 4, 4, 4, 4, 1],
+                [1, 4, 4, 4, 4, 4, 1],
+                [1, 4, 4, 4, 4, 4, 1],
+                [1, 4, 4, 4, 4, 4, 1],
+                [1, 1, 1, 1, 1, 1, 1],
+            ]
+        )
+
+        assert_allclose(h.hist.areas(), ref)
+
+    def test_without_flow(self):
+        h = get_hist(bh.axis.Regular(5, 0.0, 1.0))
+        assert_allclose(h.hist.bins(), [-np.inf, 0.0, 0.2, 0.4, 0.6, 0.8, np.inf])
+        assert_allclose(h.hist.bins(flow=False), [0.0, 0.2, 0.4, 0.6, 0.8])
+        assert_allclose(h.hist.edges(flow=False), [0.0, 0.2, 0.4, 0.6, 0.8, 1.0])
+        assert_allclose(h.hist.widths(flow=False), [0.2, 0.2, 0.2, 0.2, 0.2])
+
 
 class TestTransformBins:
     def test_apply(self):
@@ -286,6 +312,23 @@ def test_normalization():
     h = h.hist.normalize()
     ref = xh.histogramdd(x, y, z, range=[(0, 1)] * 3, density=True)
     assert_allclose(h, ref)
+
+
+def test_normalization_flow():
+    x = get_array([50], name="var1")
+    y = get_array([50], name="var2")
+    h = xh.histogramdd(x, y, bins=10, range=[(0, 1)] * 2, flow=True)
+    assert_allclose(
+        h.hist.normalize().hist.remove_flow(),
+        h.hist.remove_flow().hist.normalize(),
+    )
+
+    # borders have not been modified
+    norm = h.hist.normalize()
+    assert (norm.isel(var1_bins=0) == h.isel(var1_bins=0)).all()
+    assert (norm.isel(var1_bins=-1) == h.isel(var1_bins=-1)).all()
+    assert (norm.isel(var2_bins=0) == h.isel(var2_bins=0)).all()
+    assert (norm.isel(var2_bins=-1) == h.isel(var2_bins=-1)).all()
 
 
 class TestStatistics:
