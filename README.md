@@ -87,7 +87,6 @@ pip install -e .
 ## TODO
 
 Some features of Boost are not yet available:
-- Over/underflow bins are not in the output DataArray, but accounted for internally by Boost and should be supported very soon.
 - Growing axes: Dask requires to know in advance the size of output chunks. This could reasonably be supported, at least when applying over the whole array (no looping dimensions).
 - Advanced storage/accumulators: they provide additional values on top of the count of samples falling into a bin. They require more than one number per bin, and a more complex sum of two histograms (possibly making histogram along chunked dimensions impossible). 
 - The [Unified Histogram Indexing](https://uhi.readthedocs.io/en/latest/indexing.html) could be implemented in the accessor to facilitate manipulation of histogram arrays.
