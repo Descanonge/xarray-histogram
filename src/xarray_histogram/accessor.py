@@ -118,13 +118,15 @@ class HistDataArrayAccessor:
             c = obj.coords[bin_dim]
             # Default is Regular
             if "bin_type" not in c.attrs:
+                c.attrs["bin_type"] = "Regular"
+            # rightmost edge inference
+            if c.attrs["bin_type"] == "Regular" and "right_edge" not in c.attrs:
                 diff = np.diff(c)
                 if not np.allclose(diff, diff[0]):
                     raise ValueError(
                         f"Cannot infer right edge: bins for {var} "
                         "are not regularly spaced."
                     )
-                c.attrs["bin_type"] = "Regular"
                 c.attrs["right_edge"] = (c[-1] + diff[0]).values.item()
 
     def is_normalized(self) -> bool:
