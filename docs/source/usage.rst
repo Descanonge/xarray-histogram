@@ -69,13 +69,13 @@ Over/underflow
 By default, Boost axes are configured to keep count of the data points that
 fall outside their range. Pass ``underflow=False`` and/or ``overflow=False``
 when creating an axis to disable this.
-Still by default, the flow bins values are not kept in the output array.
-
+However, by default, the flow bins values are not kept in the output array.
 To keep the flow bins, pass ``flow=True`` to the histogram functions. The
 coordinates values for the underflow and overflow bins will be set to
 
 - for a float variable: :data:`-np.inf<numpy.inf>` and :data:`np.inf<numpy.inf>`
 - for an integer variable: the minimum and maximum values of the dtype
+- for a string variable: `_flow_bin`
 
 
 Output
@@ -85,7 +85,7 @@ All three functions return a simple :class:`xarray.DataArray`. Its name is
 ``<variable names separated by underscores>_histogram`` (so for instance
 ``x_y_histogram``). The bins edges are contained in coordinates named
 ``<variable>_bins``. The right edge of the last bin is stored in a coordinate
-attribute.
+attribute when applicable.
 
 The nomenclature is the same as :external+xhistogram:doc:`xhistogram <index>` to
 ensure easy transition between the two packages. It also enables the use of an
