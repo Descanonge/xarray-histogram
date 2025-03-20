@@ -31,8 +31,8 @@ def get_blank_histogram(n_var: int = 1) -> xr.DataArray:
 
 def get_hist(*axes: bh.axis.Axis, flow=True) -> xr.DataArray:
     data = []
-    for ax in axes:
-        x = get_array([2])
+    for i, ax in enumerate(axes):
+        x = get_array([2], name=f"var{i + 1}")
         if isinstance(ax, bh.axis.Integer | bh.axis.IntCategory):
             x = x.astype("int")
         if isinstance(ax, bh.axis.StrCategory):
@@ -69,14 +69,14 @@ def test_variable_argument() -> None:
     h = get_blank_histogram(3)
     assert h.hist._variable("var3") == "var3"
 
-    with pytest.raises(TypeError):
+    with pytest.raises(ValueError):
         h.hist._variable(None)
 
     with pytest.raises(KeyError):
         h.hist._variable("bad variable")
 
 
-class TestEdges:
+class TestCoords:
     def test_edges(self) -> None:
         # Regular
         h = get_hist(bh.axis.Regular(3, 0.0, 0.3), flow=False)
@@ -125,54 +125,147 @@ class TestEdges:
             _ = h_wrong.hist
 
     def test_centers(self):
-        h = get_blank_histogram()
-        assert_allclose(h.hist.centers(), np.arange(0, 10) + 0.5)
+        # Regular
+        h = get_hist(bh.axis.Regular(5, 0.0, 1.0), flow=False)
+        assert_allclose(h.hist.centers(), [0.1, 0.3, 0.5, 0.7, 0.9])
+        h = get_hist(bh.axis.Regular(5, 0.0, 1.0, underflow=False))
+        assert_allclose(h.hist.centers(), [0.1, 0.3, 0.5, 0.7, 0.9, np.inf])
+        h = get_hist(bh.axis.Regular(5, 0.0, 1.0))
+        assert_allclose(h.hist.centers(), [-np.inf, 0.1, 0.3, 0.5, 0.7, 0.9, np.inf])
 
-    def test_width(self):
-        h = get_blank_histogram()
-        assert_allclose(h.hist.widths(), np.ones(10))
+        # Variable
+        h = get_hist(bh.axis.Variable([0, 1, 3, 9]), flow=False)
+        assert_allclose(h.hist.centers(), [0.5, 2, 6])
+        h = get_hist(bh.axis.Variable([0, 1, 3, 9], underflow=False))
+        assert_allclose(h.hist.centers(), [0.5, 2, 6, np.inf])
+        h = get_hist(bh.axis.Variable([0, 1, 3, 9]))
+        assert_allclose(h.hist.centers(), [-np.inf, 0.5, 2, 6, np.inf])
+
+        # Integer
+        h = get_hist(bh.axis.Integer(0, 4), flow=False)
+        assert_allclose(h.hist.centers(), [0.5, 1.5, 2.5, 3.5])
+        h = get_hist(bh.axis.Integer(0, 4, underflow=False))
+        dtype = h.var1_bins.dtype
+        vmin = np.iinfo(dtype).min
+        vmax = np.iinfo(dtype).max
+        assert_allclose(h.hist.centers(), [0.5, 1.5, 2.5, 3.5, vmax])
+        h = get_hist(bh.axis.Integer(0, 4))
+        assert_allclose(h.hist.centers(), [vmin, 0.5, 1.5, 2.5, 3.5, vmax])
+
+        # Not supported
+        for ax in [bh.axis.IntCategory([0, 1, 2]), bh.axis.StrCategory(["a", "b"])]:
+            h = get_hist(ax)
+            with pytest.raises(TypeError):
+                h.hist.centers()
+
+    def test_widths(self):
+        # Regular
+        h = get_hist(bh.axis.Regular(5, 0.0, 1.0), flow=False)
+        assert_allclose(h.hist.widths(), [0.2, 0.2, 0.2, 0.2, 0.2])
+        h = get_hist(bh.axis.Regular(5, 0.0, 1.0, underflow=False))
+        assert_allclose(h.hist.widths(), [0.2, 0.2, 0.2, 0.2, 0.2, 1])
+        h = get_hist(bh.axis.Regular(5, 0.0, 1.0))
+        assert_allclose(h.hist.widths(), [1, 0.2, 0.2, 0.2, 0.2, 0.2, 1])
+
+        # Variable
+        h = get_hist(bh.axis.Variable([0, 1, 3, 9]), flow=False)
+        assert_allclose(h.hist.widths(), [1, 2, 6])
+        h = get_hist(bh.axis.Variable([0, 1, 3, 9], underflow=False))
+        assert_allclose(h.hist.widths(), [1, 2, 6, 1])
+        h = get_hist(bh.axis.Variable([0, 1, 3, 9]))
+        assert_allclose(h.hist.widths(), [1, 1, 2, 6, 1])
+
+        # Integer
+        h = get_hist(bh.axis.Integer(0, 4), flow=False)
+        assert_allclose(h.hist.widths(), np.ones(4))
+        h = get_hist(bh.axis.Integer(0, 4, underflow=False))
+        assert_allclose(h.hist.widths(), np.ones(5))
+        h = get_hist(bh.axis.Integer(0, 4))
+        assert_allclose(h.hist.widths(), np.ones(6))
+
+        # IntCategory
+        h = get_hist(bh.axis.IntCategory([1, 3, 5, 8]), flow=False)
+        assert_allclose(h.hist.widths(), np.ones(4))
+        h = get_hist(bh.axis.IntCategory([1, 3, 5, 8]))
+        assert_allclose(h.hist.widths(), np.ones(5))
+
+        # StrCategory
+        h = get_hist(bh.axis.StrCategory(["a", "b", "c"]), flow=False)
+        assert_allclose(h.hist.widths(), np.ones(3))
+        h = get_hist(bh.axis.StrCategory(["a", "b", "c"]))
+        assert_allclose(h.hist.widths(), np.ones(4))
 
     def test_areas(self):
         # the accessor uses functools.reduce(operator.mul) over xr.DataArrays
-        # we test against computation done with numpy
-        h = get_blank_histogram(3)
-        width1 = np.ones(10)
+        # we test against computation done with other numpy functions
+        ax1 = bh.axis.Regular(10, 0, 10)
+        ax2 = bh.axis.Variable([2, 5, 6, 8, 10])
+        ax3 = bh.axis.Integer(5, 10)
 
-        # spice things up
-        bins2 = np.linspace(0, 1, 11)  # width 0.1
-        h = h.assign_coords(var2_bins=bins2[:-1])
-        h.var2_bins.attrs["right_edge"] = bins2[-1]
-        h.var2_bins.attrs["bin_type"] = "Regular"
-        # width2 = np.full((10,), 0.1)
-        width2 = np.diff(bins2)
-        assert_allclose(h.hist.edges("var2"), bins2)
-        assert_allclose(h.hist.widths("var2"), width2)
+        h = get_hist(ax1, ax2, ax3, flow=False)
 
-        bins3 = np.logspace(0.1, 1, 11)
-        h = h.assign_coords(var3_bins=bins3[:-1])
-        h.var3_bins.attrs["right_edge"] = bins3[-1]
-        h.var3_bins.attrs["bin_type"] = "Variable"
-        width3 = np.diff(bins3)
-        assert_allclose(h.hist.edges("var3"), bins3)
-        assert_allclose(h.hist.widths("var3"), width3)
+        # widths
+        w1 = np.diff(ax1.edges)
+        w2 = np.diff(ax2.edges)
+        w3 = np.diff(ax3.edges)
 
-        assert_allclose(h.hist.areas(["var1"]), width1)
-        assert_allclose(h.hist.areas(["var1", "var2"]), np.outer(width1, width2))
-        assert_allclose(h.hist.areas(["var1", "var3"]), np.outer(width1, width3))
-        assert_allclose(
-            h.hist.areas(), reduce(np.multiply, np.ix_(width1, width2, width3))
-        )
+        assert_allclose(h.hist.areas(["var1"]), w1)
+        assert_allclose(h.hist.areas(["var1", "var2"]), np.outer(w1, w2))
+        assert_allclose(h.hist.areas(["var2", "var3"]), np.outer(w2, w3))
+        assert_allclose(h.hist.areas(), reduce(np.multiply, np.ix_(w1, w2, w3)))
 
 
 class TestTransformBins:
     def test_apply(self):
-        h = get_blank_histogram(2)
+        # Integer
+        h = get_hist(bh.axis.Integer(0, 4), flow=False)
+        dtype = h.var1_bins.dtype
+        vmin = np.iinfo(dtype).min
+        vmax = np.iinfo(dtype).max
+
+        h2 = h.hist.apply_func(lambda bins: bins + 2)
+        assert "right_edge" not in h2.hist.bins().attrs
+        assert_allclose(h2.hist.bins(), [2, 3, 4, 5])
+        assert_allclose(h2.hist.edges(), [2, 3, 4, 5, 6])
+
+        h = get_hist(bh.axis.Integer(0, 4, underflow=False))
+        h2 = h.hist.apply_func(lambda bins: bins + 2)
+        assert "right_edge" not in h2.hist.bins().attrs
+        assert_allclose(h2.hist.bins(), [2, 3, 4, 5, vmax])
+        assert_allclose(h2.hist.edges(), [2, 3, 4, 5, 6, vmax])
+
+        h = get_hist(bh.axis.Integer(0, 4))
+        h2 = h.hist.apply_func(lambda bins: bins + 2)
+        assert "right_edge" not in h2.hist.bins().attrs
+        assert_allclose(h2.hist.bins(), [vmin, 2, 3, 4, 5, vmax])
+        assert_allclose(h2.hist.edges(), [vmin, 2, 3, 4, 5, 6, vmax])
+
+        # Regular
+        h = get_hist(bh.axis.Regular(4, 0, 4), flow=False)
+
+        h2 = h.hist.apply_func(lambda bins: bins + 2)
+        assert_allclose(h2.hist.bins(), [2, 3, 4, 5])
+        assert h2.hist.bins().attrs["right_edge"] == 6.0
+        assert_allclose(h2.hist.edges(), [2, 3, 4, 5, 6])
+
+        h = get_hist(bh.axis.Regular(4, 0, 4, underflow=False))
+        h2 = h.hist.apply_func(lambda bins: bins + 2)
+        assert h2.hist.bins().attrs["right_edge"] == 6.0
+        assert_allclose(h2.hist.edges(), [2, 3, 4, 5, 6, np.inf])
+
+        h = get_hist(bh.axis.Regular(4, 0, 4))
+        h2 = h.hist.apply_func(lambda bins: bins + 2)
+        assert h2.hist.bins().attrs["right_edge"] == 6.0
+        assert_allclose(h2.hist.edges(), [-np.inf, 2, 3, 4, 5, 6, np.inf])
+
+    def test_apply_no_side_effect(self):
+        h = get_hist(bh.axis.Regular(10, 10, 20), bh.axis.Integer(0, 10), flow=False)
         h2 = h.hist.apply_func(lambda bins: bins + 2, "var1")
         assert_allclose(h2.hist.edges("var1"), h.hist.edges("var1") + 2)
         assert_allclose(h2.hist.edges("var2"), h.hist.edges("var2"))
 
     def test_scale(self):
-        h = get_blank_histogram(2)
+        h = get_hist(bh.axis.Regular(10, 10, 20), bh.axis.Integer(0, 10), flow=False)
         h2 = h.hist.scale(2.0, "var1")
         assert_allclose(h2.hist.edges("var1"), h.hist.edges("var1") * 2)
         assert_allclose(h2.hist.edges("var2"), h.hist.edges("var2"))
