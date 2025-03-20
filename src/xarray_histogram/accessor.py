@@ -226,6 +226,35 @@ class HistDataArrayAccessor:
         output = output.rename("_".join(self.variables) + "_pdf")
         return output
 
+    def remove_flow(self, variables: abc.Sequence[str] | None = None) -> xr.DataArray:
+        """Remove flow bins.
+
+        Parameters
+        ----------
+        variables
+            Variables for which to remove flow bins. If not specified, remove for all
+            variables.
+        """
+        if variables is None:
+            variables = self.variables
+
+        slices = {}
+        for var in variables:
+            coord = self.bins(var)
+            underflow = coord.attrs.get("underflow", False)
+            overflow = coord.attrs.get("overflow", False)
+            slices[_bins_name(var)] = slice(
+                1 if underflow else 0, -1 if overflow else None
+            )
+
+        out = self._obj.isel(slices)
+
+        for var in variables:
+            coord = out.coords[_bins_name(var)]
+            coord.attrs["underflow"] = False
+            coord.attrs["overflow"] = False
+        return out
+
     def _apply_to_coord(
         self,
         func: abc.Callable[[xr.DataArray], xr.DataArray],
