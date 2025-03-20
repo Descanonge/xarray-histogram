@@ -4,10 +4,7 @@ An accessor registered as ``hist`` is made available on :class:`xarray.DataArray
 various histogram manipulations.
 """
 
-import operator
-import typing as t
 from collections import abc
-from functools import reduce
 
 import numpy as np
 import xarray as xr
@@ -26,22 +23,24 @@ class HistDataArrayAccessor:
 
     .. rubric:: Validity
 
-    They are some conditions for the accessor to be accessible:
-
     * The coordinates of the bins must be named ``<variable>_bins``.
-    * Each bins coordinates must contain an attribute named `right_edge`, corresponding
-      to the right edge of the last bin.
-    * The array must be named as ``<variable(s)_name>_<histogram or pdf>``. `histogram`
-      if it is *not* normalized, and `pdf` if it is normalized as a probability density
-      function. If the histogram is multi-dimensional, the variables names must be
-      separated by underscores. For instance: ``Temp_Sal_histogram``.
+    * The array must be named as ``<variable(s)_name>_<histogram or pdf>``. histogram*
+    *if it is not normalized, and *pdf* if it is normalized as a probability density
+    *function. If the histogram is multi-dimensional, the variables names must be
+    *separated by underscores. For instance: ``Temp_Sal_histogram``.
 
-    Those conventions are coherent with the output of :func:`.core.histogram`, so if you
-    use this function you should not have to worry.
+    Each bins coordinate may contain attributes:
+
+    * ``bin_type``: the class name of the Boost axis type that was used. If not present,
+    the accessor will assume the bins are regularly spaced and will try to infer the
+    rightmost edge. * ``right_edge``: the rightmost edge position, only necessary for
+    Regular and Variable bins. * ``underflow`` and ``overflow``: booleans that indicate
+    if the corresponding flow bins are present. If not present, will assume no flow
+    bins.
 
     .. rubric:: Backend for computations
 
-    Most computations are actually delegated to :class:`scipy.stats.rv_histogram`.
+    Statistics computations are actually delegated to :class:`scipy.stats.rv_histogram`.
     Therefore, it does not support chunking along the bins dimensions (which should not
     be a problem in most cases).
     """
@@ -107,8 +106,8 @@ class HistDataArrayAccessor:
     def _check_bins(self) -> None:
         """Check validity of bins.
 
-        Check the variables names have corresponding bins dimensions, and if the
-        coordinates contain a `right_edge` attribute (if not try to infer it).
+        Check the variables names have corresponding bins dimensions, and infer right
+        edge if necessary.
         """
         obj = self._obj
         for var in self.variables:
@@ -134,7 +133,7 @@ class HistDataArrayAccessor:
         return self._variable_type == "pdf"
 
     def _variable(self, var: str | None) -> str:
-        """Return variable argument."""
+        """Sanitize variable argument."""
         if var is None:
             if len(self.variables) == 1:
                 return self.variables[0]
@@ -145,8 +144,16 @@ class HistDataArrayAccessor:
             )
         return var
 
-        """Return bins coordinates for a given variable."""
     def bins(self, variable: str | None = None, flow: bool = True) -> xr.DataArray:
+        """Return bins coordinates for a given variable.
+
+        Parameters
+        ----------
+        variable
+            Can be omitted for 1D histograms.
+        flow
+            Remove flow bins if False.
+        """
         variable = self._variable(variable)
         dim = _bins_name(variable)
         coord = self._obj.coords[dim]
@@ -155,15 +162,36 @@ class HistDataArrayAccessor:
         return coord
 
     def edges(self, variable: str | None = None, flow: bool = True) -> xr.DataArray:
+        """Return the edges of the bins (including the right most edge).
+
+        Not supported for bins of the discrete types "IntCategory" and "StrCategory".
+
+        Parameters
+        ----------
+        variable
+            Can be omitted for 1D histograms.
+        flow
+            Remove flow bins if False.
+        """
         edges = get_edges(self.bins(variable))
         if not flow:
             edges = remove_flow(edges)
         return edges
 
-        """Return the edges of the bins (including the right most edge)."""
     def centers(self, variable: str | None = None, flow: bool = True) -> xr.DataArray:
+        """Return the center of all bins.
 
-        """Return the center of all bins."""
+        Not supported for bin type "StrCategory". IntCategory bins centers are
+        ``bins+0.5``. The centers of flow bins are the same as their position
+        (``np.inf`` for instance).
+
+        Parameters
+        ----------
+        variable
+            Can be omitted for 1D histograms.
+        flow
+            Remove flow bins if False.
+        """
         variable = self._variable(variable)
         dim = _bins_name(variable)
 
@@ -182,19 +210,39 @@ class HistDataArrayAccessor:
 
         return self._apply_to_coord(center, variable, keep_right_edge=True, flow=flow)
 
-        """Return the width of all bins."""
     def widths(self, variable: str | None = None, flow: bool = True) -> xr.DataArray:
+        """Return the widths of all bins.
 
+        Widths of flow bins and StrCategory are 1.
+
+        Parameters
+        ----------
+        variable
+            Can be omitted for 1D histograms.
+        flow
+            Remove flow bins if False.
+        """
         widths = get_widths(self.bins(variable))
         if not flow:
             widths = remove_flow(widths)
         return widths
+
     def areas(
         self, variables: abc.Sequence[str] | None = None, flow: bool = True
     ) -> xr.DataArray:
         """Return the areas of the bins.
 
-        The product of the widths of all bins.
+        The product of the widths of all specified bins.
+        The areas of points that correspond to a flow bin in at least one dimension is
+        equal to one.
+
+        Parameters
+        ----------
+        variables
+            Variables to include the corresponding bins. If left to None, all variables
+            are used.
+        flow
+            Remove flow bins if False.
         """
         if variables is None:
             variables = self.variables
