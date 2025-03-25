@@ -1,6 +1,6 @@
 
-sphinx==6.2.*
-sphinx-book-theme==1.0.*
+sphinx==8.2.*
+sphinx-book-theme==1.1.*
 nbsphinx
 
 numpy>=1.26

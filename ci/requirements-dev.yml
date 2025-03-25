@@ -8,13 +8,12 @@ dependencies:
     - scipy
 
     - boost-histogram >= 1.4.1
-    - dask-histogram >= 2024.3
 
     - xarray >= 2024.5
     - dask >= 2024.5
 
-    - sphinx
-    - sphinx-book-theme
+    - sphinx == 8.2.*
+    - sphinx-book-theme == 1.1.*
     - nbpshinx
 
     - ruff

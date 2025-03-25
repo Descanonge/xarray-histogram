@@ -43,10 +43,17 @@ full = [
 dev = [
     'dask',
     'scipy',
-    'sphinx==6.2.1',
-    'sphinx-book-theme==1.0.1',
+    'sphinx',
+    'sphinx-book-theme',
     'ruff',
     'mypy>=1.5',
+    'pytest>=7.4',
+    'coverage',
+    'pytest-cov'
+]
+tests = [
+    'dask',
+    'scipy',
     'pytest>=7.4',
     'coverage',
     'pytest-cov'
