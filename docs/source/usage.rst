@@ -18,6 +18,14 @@ weights to apply when computing the histogram. All arguments must be
 broadcastable against each other. For Dask arrays, chunks will be adapted using
 :func:`xarray.unify_chunks`.
 
+If only some of the input are Dask arrays, the other Numpy arrays will be
+transformed to Dask by using :meth:`xarray.DataArray.chunk`. This embeds their
+data in the task graph which is generally undesirable. It may be preferable to
+manually distribute the data or load it from file using Dask (see `Dask best
+practices
+<https://docs.dask.org/en/latest/best-practices.html#load-data-with-dask>`__ for
+details).
+
 Bins / Axes
 ===========
 
