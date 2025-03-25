@@ -7,7 +7,7 @@
 
 [![PyPI](https://img.shields.io/pypi/v/xarray-histogram)](https://pypi.org/project/xarray-histogram)
 [![GitHub release](https://img.shields.io/github/v/release/Descanonge/xarray-histogram)](https://github.com/Descanonge/xarray-histogram/releases)
-[![test status](https://github.com/Descanonge/xarray-histogram/actions/workflows/tests.yml/badge.svg)
+![test status](https://github.com/Descanonge/xarray-histogram/actions/workflows/tests.yml/badge.svg)
 [![codecov](https://codecov.io/github/Descanonge/xarray-histogram/branch/master/graph/badge.svg?token=7RQ4WIXQ6N)](https://codecov.io/github/Descanonge/xarray-histogram)
 [![Documentation Status](https://readthedocs.org/projects/xarray-histogram/badge/?version=latest)](https://xarray-histogram.readthedocs.io/en/latest/?badge=latest)
 
