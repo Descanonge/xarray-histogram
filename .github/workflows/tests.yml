@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  test:
+  tests:
     runs-on: ubuntu-latest
 
     steps:
@@ -23,7 +23,12 @@ jobs:
       - name: Install package and dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install .[dev]
+          python -m pip install .[tests]
 
       - name: Run tests
-        run: python -m pytest -v tests
+        run: pytest --cov=xarray_histogram --cov=tests --cov-branch --cov-report=xml -v tests
+
+      - name: Upload coverage on Codecov
+        uses: covecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
