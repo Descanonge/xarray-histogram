@@ -29,6 +29,6 @@ jobs:
         run: pytest --cov=xarray_histogram --cov=tests --cov-branch --cov-report=xml -v tests
 
       - name: Upload coverage on Codecov
-        uses: covecov/codecov-action@v5
+        uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
