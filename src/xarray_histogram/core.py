@@ -528,7 +528,9 @@ def get_coord(name: str, ax: bh.axis.Axis, dtype: np.dtype, flow: bool) -> xr.Da
     """
     underflow = flow and ax.traits.underflow
     overflow = flow and ax.traits.overflow
-    attrs = dict(bin_type=type(ax).__name__, underflow=underflow, overflow=overflow)
+    attrs = dict(
+        bin_type=type(ax).__name__, underflow=int(underflow), overflow=int(overflow)
+    )
 
     if isinstance(ax, bh.axis.Integer):
         if dtype.kind not in "uib":

@@ -1,4 +1,8 @@
 
+### 0.2.1
+
+- Fix: under/over flow attributes are int instead of bool to conform with NetCDF
+
 ## 0.2.0
 
 - Use common function for normalization in histogramdd and accessor

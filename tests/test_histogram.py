@@ -87,8 +87,8 @@ class TestCoordinates:
         assert coord.attrs["bin_type"] == "Regular"
         assert coord.size == ax.extent
         assert coord.attrs["right_edge"] == 1.0
-        assert coord.attrs["underflow"] is underflow
-        assert coord.attrs["overflow"] is overflow
+        assert coord.attrs["underflow"] is int(underflow)
+        assert coord.attrs["overflow"] is int(overflow)
 
         slc = slice(1 if underflow else 0, -1 if overflow else None)
         assert_allclose(coord[slc], ax.edges[:-1])
@@ -110,8 +110,8 @@ class TestCoordinates:
         assert coord.attrs["bin_type"] == "Regular"
         assert coord.size == ax.extent
         assert coord.attrs["right_edge"] == 10.0
-        assert coord.attrs["underflow"] is underflow
-        assert coord.attrs["overflow"] is overflow
+        assert coord.attrs["underflow"] is int(underflow)
+        assert coord.attrs["overflow"] is int(overflow)
 
         slc = slice(1 if underflow else 0, -1 if overflow else None)
         assert_allclose(coord[slc], ax.edges[:-1])
@@ -133,8 +133,8 @@ class TestCoordinates:
         assert coord.attrs["bin_type"] == "Integer"
         assert coord.size == ax.extent
         assert "right_edge" not in coord.attrs
-        assert coord.attrs["underflow"] is underflow
-        assert coord.attrs["overflow"] is overflow
+        assert coord.attrs["underflow"] is int(underflow)
+        assert coord.attrs["overflow"] is int(overflow)
 
         slc = slice(1 if underflow else 0, -1 if overflow else None)
         assert_allclose(coord[slc], ax.edges[:-1])
@@ -153,8 +153,8 @@ class TestCoordinates:
         assert coord.size == 5 if overflow else 4
         assert np.isdtype(coord.dtype, kind="signed integer")
         assert coord.attrs["bin_type"] == "IntCategory"
-        assert coord.attrs["underflow"] is False
-        assert coord.attrs["overflow"] is overflow
+        assert coord.attrs["underflow"] == 0
+        assert coord.attrs["overflow"] is int(overflow)
         if overflow:
             assert_allclose(coord, [2, 5, 8, 7, np.iinfo(coord.dtype).max])
         else:
@@ -172,8 +172,8 @@ class TestCoordinates:
         assert coord.attrs["bin_type"] == "Integer"
         assert coord.size == ax.extent
         assert "right_edge" not in coord.attrs
-        assert coord.attrs["underflow"] is underflow
-        assert coord.attrs["overflow"] is overflow
+        assert coord.attrs["underflow"] is int(underflow)
+        assert coord.attrs["overflow"] is int(overflow)
         if underflow or overflow:
             assert np.isdtype(coord.dtype, kind="signed integer")
             slc = slice(1 if underflow else 0, -1 if overflow else None)
@@ -197,8 +197,8 @@ class TestCoordinates:
         coord = hist["var1_bins"]
         assert coord.size == 3 if overflow else 2
         assert coord.attrs["bin_type"] == "IntCategory"
-        assert coord.attrs["underflow"] is False
-        assert coord.attrs["overflow"] is overflow
+        assert coord.attrs["underflow"] == 0
+        assert coord.attrs["overflow"] is int(overflow)
         if overflow:
             assert np.isdtype(coord.dtype, kind="signed integer")
             assert_allclose(coord[:-1], [0, 1])
@@ -515,7 +515,3 @@ class TestMultivariate:
         ref = get_ref_hist(x, y, axes=axes)
 
         assert_allclose(hist.to_numpy(), ref, atol=1, rtol=1e-6)
-
-
-class TestFlowBins:
-    pass

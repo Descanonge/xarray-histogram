@@ -53,8 +53,13 @@ Each bins coordinate may contain attributes:
   to infer the rightmost edge.
 * ``right_edge``: the rightmost edge position, only necessary for Regular and
   Variable bins.
-* ``underflow`` and ``overflow``: booleans that indicate if the corresponding
-  flow bins are present. If not present, will assume no flow bins.
+* ``underflow`` and ``overflow``: integers that indicate if the corresponding
+  flow bins are present (0: not present, 1: present). If not specified, will
+  assume no flow bins.
+
+  .. note::
+
+     We use integers instead of booleans to conform with NetCDF attributes.
 
 Those conventions are coherent with the output of
 ``xarray_histogram.histogram*``, so if you use this package functions you

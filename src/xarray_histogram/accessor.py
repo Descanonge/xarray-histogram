@@ -36,7 +36,7 @@ class HistDataArrayAccessor:
       rightmost edge.
     * ``right_edge``: the rightmost edge position, only necessary for Regular and
        Variable bins.
-    * ``underflow`` and ``overflow``: booleans that indicate if the corresponding flow
+    * ``underflow`` and ``overflow``: integers that indicate if the corresponding flow
       bins are present. If not present, will assume no flow bins.
 
     .. rubric:: Backend for computations
@@ -578,6 +578,6 @@ def remove_flow(coord: xr.DataArray) -> xr.DataArray:
     overflow = coord.attrs.get("overflow", False)
     underflow = coord.attrs.get("underflow", False)
     out = coord[slice(1 if underflow else 0, -1 if overflow else None)]
-    out.attrs["underflow"] = False
-    out.attrs["overflow"] = True
+    out.attrs["underflow"] = 0
+    out.attrs["overflow"] = 0
     return out
