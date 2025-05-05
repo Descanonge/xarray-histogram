@@ -19,7 +19,9 @@ via an XArray accessor.
 Installation
 ============
 
-* Soon from PyPI ... 🚧
+* From PyPI::
+
+   pip install xarray-histogram
 
 * From source::
 
