@@ -1,4 +1,8 @@
 
+### 0.2.2
+
+- Fix oversized Dask graph
+
 ### 0.2.1
 
 - Fix: under/over flow attributes are int instead of bool to conform with NetCDF

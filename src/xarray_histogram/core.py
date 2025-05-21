@@ -307,7 +307,9 @@ def histogramdd(
             input_core_dims=[list(dims) for _ in data],
             output_core_dims=[bins_names],
             vectorize=True,
-            kwargs=dict(weight=weights is not None, flow=flow, histref=histref),
+            kwargs=dict(
+                weight=weights is not None, flow=flow, histref=(histref.axes, storage)
+            ),
         ).rename(VAR_HIST)
 
     hist = hist.assign_coords(coords)
@@ -320,33 +322,27 @@ def histogramdd(
     return hist
 
 
-def get_shape(histref: bh.Histogram, flow: bool) -> tuple[int, ...]:
+def get_shape(axes: bh.axis.AxesTuple, flow: bool) -> tuple[int, ...]:
     """Return shape of histogram."""
     if flow:
-        return histref.axes.extent
-    return histref.shape
-
-
-def clone(histref: bh.Histogram) -> bh.Histogram:
-    """Clone reference histogram."""
-    return bh.Histogram(*histref.axes, storage=histref.storage_type())
+        return axes.extent
+    return axes.size
 
 
 def _blocked_dd(
     *data: NDArray,
     weight: bool,
     flow: bool,
-    histref: bh.Histogram,
+    histref: tuple[bh.axis.AxesTuple, bh.storage.Storage],
     keepdims: bool = False,
 ) -> NDArray:
     """Compute histogram on whole arrays.
 
     Arrays are already broadcasted.
     """
-    thehist = clone(histref)
+    thehist = bh.Histogram(*histref[0], storage=histref[1])
     flattened = (np.reshape(x, (-1,)) for x in data)
 
-    thehist = clone(histref)
     if weight:
         *args, weights = flattened
         thehist.fill(*args, weight=weights)
@@ -367,7 +363,7 @@ def _blocked_dd_loop(
     axis_loop: abc.Sequence[int],
     weight: bool,
     flow: bool,
-    histref: bh.Histogram,
+    histref: tuple[bh.axis.AxesTuple, bh.storage.Storage],
     keepdims: bool = False,
 ) -> NDArray:
     """Compute multiple histograms on looping axis.
@@ -388,9 +384,9 @@ def _blocked_dd_loop(
     n_loop = reduce(operator.mul, shape_loop)
     flattened = [np.reshape(a, (n_loop, n_agg)) for a in ordered]
 
-    counts = np.zeros((n_loop, *get_shape(histref, flow)))
+    counts = np.zeros((n_loop, *get_shape(histref[0], flow)))
     for i in range(n_loop):
-        thehist = clone(histref)
+        thehist = bh.Histogram(*histref[0], storage=histref[1])
         if weight:
             *args, weights = flattened
             thehist.fill(*[a[i] for a in args], weight=weights[i])
@@ -399,7 +395,7 @@ def _blocked_dd_loop(
 
         counts[i] = thehist.values(flow)
 
-    counts = np.reshape(counts, (*shape_loop, *get_shape(histref, flow)))
+    counts = np.reshape(counts, (*shape_loop, *get_shape(histref[0], flow)))
     if keepdims:
         counts = np.expand_dims(
             counts, tuple(_range(len(axis_loop), len(axis_loop) + len(axis_agg)))
@@ -417,6 +413,7 @@ def _histogram_dask(
     histref: bh.Histogram,
 ) -> da.Array:
     """Compute histogram for dask data."""
+    histref_tuple = (histref.axes, histref.storage_type())
     if axis_loop:
         func = partial(
             _blocked_dd_loop,
@@ -424,10 +421,10 @@ def _histogram_dask(
             axis_agg=axis_agg,
             weight=weight,
             flow=flow,
-            histref=histref,
+            histref=histref_tuple,
         )
     else:
-        func = partial(_blocked_dd, weight=weight, flow=flow, histref=histref)
+        func = partial(_blocked_dd, weight=weight, flow=flow, histref=histref_tuple)
 
     dtype = (
         int
@@ -445,13 +442,14 @@ def _histogram_dask(
         chunks=(
             *[data[0].chunks[i][0] for i in axis_loop],
             *[1 for _ in axis_agg],
-            *get_shape(histref, flow),
+            *get_shape(histref.axes, flow),
         ),
         new_axis=[data[0].ndim + i for i in range(histref.ndim)],
         enforce_ndim=True,
         name="hist-on-block",
         meta=np.array((), dtype=dtype),
     )
+
     reduc = da.reductions._tree_reduce(
         blocked,
         da.sum,
